@@ -32,17 +32,19 @@ export default function Index() {
         watchSubRef.current = await Location.watchPositionAsync(
             {
                 accuracy: Location.Accuracy.BestForNavigation,
-                timeInterval: 1000,     // ~1 Hz
-                distanceInterval: 0.5,    // or ~1 meter move
+                timeInterval: 1000,
+                distanceInterval: 1,
+                mayShowUserSettingsDialog: true
             },
             (pos) => {
+                if ((pos.coords.accuracy ?? 99) > 8) return;
                 const tp = {
                     latitude: pos.coords.latitude,
                     longitude: pos.coords.longitude,
                     timestamp: pos.timestamp ?? Date.now(),
                 };
                 setTrack((prev) => [...prev, tp]);
-                // console.log(`position: ${tp.latitude}, ${tp.longitude}`);
+                console.log(`position: ${tp.latitude}, ${tp.longitude}`);
             }
         );
     };
