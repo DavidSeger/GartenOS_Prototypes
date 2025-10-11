@@ -31,9 +31,9 @@ export default function Index() {
 
         watchSubRef.current = await Location.watchPositionAsync(
             {
-                accuracy: Location.Accuracy.High,
+                accuracy: Location.Accuracy.BestForNavigation,
                 timeInterval: 1000,     // ~1 Hz
-                distanceInterval: 1,    // or ~1 meter move
+                distanceInterval: 0.5,    // or ~1 meter move
             },
             (pos) => {
                 const tp = {
@@ -57,6 +57,7 @@ export default function Index() {
         // console.log('Recorded points:', track.length);
     };
 
+
     return (
         <View style={styles.container}>
             <MapPreview track={track} />
@@ -74,7 +75,19 @@ export default function Index() {
     );
 }
 
-/** ---------- Map preview ---------- **/
+function smoothPoints(points: TrackPoint[], window = 3) {
+    if (points.length < window) return points;
+    const smoothed: TrackPoint[] = [];
+    for (let i = 0; i < points.length; i++) {
+        const start = Math.max(0, i - window + 1);
+        const slice = points.slice(start, i + 1);
+        const lat = slice.reduce((a, p) => a + p.latitude, 0) / slice.length;
+        const lon = slice.reduce((a, p) => a + p.longitude, 0) / slice.length;
+        smoothed.push({ ...points[i], latitude: lat, longitude: lon });
+    }
+    return smoothed;
+}
+
 function MapPreview({ track }: { track: TrackPoint[] }) {
     const { width } = useWindowDimensions();
     const height = Math.min(300, Math.max(200, Math.round(width * 0.6))); // responsive, ~landscape strip
@@ -82,45 +95,45 @@ function MapPreview({ track }: { track: TrackPoint[] }) {
 
     // Compute bounds (min/max lat/lon) and a projector to screen coords
     const { pointsStr, head } = useMemo(() => {
-        if (track.length === 0) return { pointsStr: '', head: null as null | { x: number; y: number } };
+        if (track.length === 0)
+            return { pointsStr: '', head: null as null | { x: number; y: number } };
 
-        let minLat = track[0].latitude;
-        let maxLat = track[0].latitude;
-        let minLon = track[0].longitude;
-        let maxLon = track[0].longitude;
+        // 🟢 Smooth the track before processing
+        const smoothed = smoothPoints(track, 3); // 3-point moving average
 
-        for (const p of track) {
+        let minLat = smoothed[0].latitude;
+        let maxLat = smoothed[0].latitude;
+        let minLon = smoothed[0].longitude;
+        let maxLon = smoothed[0].longitude;
+
+        for (const p of smoothed) {
             if (p.latitude < minLat) minLat = p.latitude;
             if (p.latitude > maxLat) maxLat = p.latitude;
             if (p.longitude < minLon) minLon = p.longitude;
             if (p.longitude > maxLon) maxLon = p.longitude;
         }
 
-        // Prevent divide-by-zero for tiny moves: pad bounds slightly
         const latSpan = Math.max(1e-6, maxLat - minLat);
         const lonSpan = Math.max(1e-6, maxLon - minLon);
 
-        // Fit to view with padding, preserve aspect ratio
         const innerW = width - padding * 2;
         const innerH = height - padding * 2;
         const scaleX = innerW / lonSpan;
         const scaleY = innerH / latSpan;
         const scale = Math.min(scaleX, scaleY);
 
-        // Centering offsets
         const contentW = lonSpan * scale;
         const contentH = latSpan * scale;
         const offsetX = (width - contentW) / 2;
         const offsetY = (height - contentH) / 2;
 
         const project = (lat: number, lon: number) => {
-            // x grows with longitude; y inverted so north is up
             const x = offsetX + (lon - minLon) * scale;
-            const y = offsetY + (maxLat - lat) * scale; // invert latitude
+            const y = offsetY + (maxLat - lat) * scale;
             return { x, y };
         };
 
-        const pts = track.map((p) => project(p.latitude, p.longitude));
+        const pts = smoothed.map((p) => project(p.latitude, p.longitude));
         const str = pts.map((p) => `${p.x},${p.y}`).join(' ');
         const headPt = pts[pts.length - 1];
 
