@@ -35,6 +35,15 @@ export default function TabLayout() {
                     ),
                 }}
             />
+            <Tabs.Screen
+                name="CornersOnlyWorkflow"
+                options={{
+                    title: 'CornersMethod',
+                    tabBarIcon: ({ color, focused }) => (
+                        <Ionicons name={focused ? 'albums-outline' : 'albums-sharp'} color={color} size={24}/>
+                    ),
+                }}
+            />
         </Tabs>
     );
 }
