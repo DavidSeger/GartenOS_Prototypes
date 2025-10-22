@@ -3,6 +3,8 @@ import { View, StyleSheet, Alert, useWindowDimensions, Text as RNText, ScrollVie
 import * as Location from 'expo-location';
 import Svg, { Polygon, Circle, Rect, Line, Text as SvgText } from 'react-native-svg';
 import Button from '@/app/components/Button';
+import {Paths, File} from "expo-file-system";
+import * as Sharing from 'expo-sharing';
 
 /** Types **/
 type Corner = { latitude: number; longitude: number; timestamp: number };
@@ -25,6 +27,20 @@ function toMetersProjector(lat0: number, lon0: number) {
             return { lat, lon };
         },
     };
+}
+
+async function saveHelloWorldToDownloads() {
+    try {
+        console.log(Paths.document)
+        const file = new File(Paths.document, 'example5.txt');
+        file.create();
+        file.write('Hello, world!');
+        await Sharing.shareAsync(Paths.document.uri + "example4.txt", { mimeType: 'text/plain', dialogTitle: 'Save hello-world.txt' });
+        console.log("here")
+        Alert.alert('Saved', 'Saved as hello-world.txt in the folder you chose.');
+    } catch (e: any) {
+        Alert.alert('Save failed', String(e?.message ?? e));
+    }
 }
 
 /** Douglas–Peucker simplify (on meters) — optional for very wiggly points **/
@@ -242,6 +258,7 @@ export default function GardenCornersOnly() {
 
             <View style={styles.controls}>
                 <Button theme="primary" label={isAveraging ? 'Averaging (10s)…' : 'Mark Corner (10s)'} onPress={addCorner} />
+                <Button label="Download hello-world.txt" onPress={saveHelloWorldToDownloads} />
             </View>
 
             <ScrollView style={styles.metrics} contentContainerStyle={{ paddingVertical: 8 }}>
