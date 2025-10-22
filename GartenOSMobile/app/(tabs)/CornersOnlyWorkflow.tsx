@@ -1,8 +1,7 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { View, StyleSheet, Alert, useWindowDimensions, Text as RNText, ScrollView } from 'react-native';
+import { View, StyleSheet, Alert, useWindowDimensions, Text as RNText, ScrollView, Platform } from 'react-native';
 import * as Location from 'expo-location';
 import Svg, { Polygon, Circle, Rect, Line, Text as SvgText } from 'react-native-svg';
-
 import Button from '@/app/components/Button';
 
 /** Types **/
@@ -72,50 +71,70 @@ function formatMeters(m: number) {
     return `${m.toFixed(1)} m`;
 }
 
-/** Corner averaging (stay ~10 s per corner) **/
-async function averageCorner(seconds = 10): Promise<Corner | null> {
+async function ensureLocationReady(): Promise<void> {
     const perm = await Location.requestForegroundPermissionsAsync();
     if (perm.status !== 'granted') {
-        Alert.alert('Permission needed', 'Location permission is required to mark a corner.');
+        throw new Error('Location permission denied. Enable it in Settings.');
+    }
+    if (Platform.OS === 'android') {
+        const on = await Location.hasServicesEnabledAsync();
+        if (!on) throw new Error('Location services are off. Turn on GPS.');
+    }
+}
+
+async function averageCorner(seconds = 10): Promise<Corner | null> {
+    try { await ensureLocationReady(); } catch (e: any) {
+        Alert.alert('Location needed', e?.message ?? String(e)); return null;
+    }
+
+    const samples: { lat: number; lon: number; acc: number }[] = [];
+    const t0 = Date.now();
+    let sub: Location.LocationSubscription | null = null;
+
+    try {
+        sub = await Location.watchPositionAsync(
+            {
+                accuracy: Location.Accuracy.BestForNavigation,
+                timeInterval: 500,
+                distanceInterval: 0,
+                mayShowUserSettingsDialog: true,
+            },
+            (pos) => {
+                const acc = pos.coords.accuracy ?? 9999;
+                const { latitude: lat, longitude: lon } = pos.coords;
+                // Accept up to ~20 m; tighten later if you like
+                if (Number.isFinite(lat) && Number.isFinite(lon) && acc <= 20) {
+                    samples.push({ lat, lon, acc });
+                }
+                if (Date.now() - t0 >= seconds * 1000) { sub?.remove(); sub = null; }
+            }
+        );
+
+        while (Date.now() - t0 < seconds * 1000) {
+            await new Promise(r => setTimeout(r, 200));
+        }
+    } finally { sub?.remove(); }
+
+    if (!samples.length) {
+        Alert.alert('No good GPS', 'Enable Precise Location and try outdoors with a clear sky.');
         return null;
     }
-    const start = Date.now();
-    const buf: Corner[] = [];
-    while (Date.now() - start < seconds * 1000) {
-        const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.BestForNavigation });
-        if ((pos.coords.accuracy ?? 99) <= 5) {
-            buf.push({ latitude: pos.coords.latitude, longitude: pos.coords.longitude, timestamp: pos.timestamp ?? Date.now() });
-        }
-        await new Promise((r) => setTimeout(r, 300)); // ~3 Hz
+
+    // Weighted average by 1/σ²
+    let wSum = 0, latSum = 0, lonSum = 0;
+    for (const s of samples) {
+        const sigma = Math.max(1, s.acc);
+        const w = 1 / (sigma * sigma);
+        wSum += w; latSum += w * s.lat; lonSum += w * s.lon;
     }
-    if (!buf.length) return null;
-    const lat = buf.reduce((a, p) => a + p.latitude, 0) / buf.length;
-    const lon = buf.reduce((a, p) => a + p.longitude, 0) / buf.length;
+    const lat = latSum / wSum;
+    const lon = lonSum / wSum;
     return { latitude: lat, longitude: lon, timestamp: Date.now() };
 }
 
-export default function GardenCornersOnly() {
-    const [corners, setCorners] = useState<Corner[]>([]);
-    const [isAveraging, setIsAveraging] = useState(false);
-
-    const addCorner = useCallback(async () => {
-        if (isAveraging) return;
-        setIsAveraging(true);
-        const c = await averageCorner(10);
-        setIsAveraging(false);
-        if (!c) {
-            Alert.alert('No good GPS', 'Move to a clearer sky view and try again.');
-            return;
-        }
-        setCorners((prev) => [...prev, c]);
-    }, [isAveraging]);
-
-    const undoCorner = useCallback(() => setCorners((cs) => cs.slice(0, -1)), []);
-    const resetAll = useCallback(() => setCorners([]), []);
-    const closePolygon = useCallback(() => setCorners((cs) => (cs.length >= 3 ? [...cs, cs[0]] : cs)), []);
-
-    // Metrics in meters (local tangent projection around first point)
-    const metrics = useMemo(() => {
+// Helper to wrap the memoized metrics calculation
+function useMetrics(corners: Corner[]) {
+    return useMemo(() => {
         if (corners.length < 2) return null;
         const lat0 = corners[0].latitude, lon0 = corners[0].longitude;
         const proj = toMetersProjector(lat0, lon0);
@@ -126,8 +145,96 @@ export default function GardenCornersOnly() {
         const simp = simplifyXY(pts, 0.02);
         const perim = edgeLengthsMeters(simp).reduce((a, b) => a + b, 0);
         const area = simp.length >= 3 ? polygonAreaMeters(simp) : 0;
-        return { proj, xy: simp, perim, area };
+        return { proj, xy: simp, perim, area, closed };
     }, [corners]);
+}
+
+// Custom hook to calculate map-specific values for JSON export
+function useExportData(corners: Corner[], metrics: ReturnType<typeof useMetrics>) {
+    const { width } = useWindowDimensions();
+    const height = Math.min(340, Math.max(220, Math.round(width * 0.6)));
+    const padding = 16;
+
+    const exportData = useMemo(() => {
+        if (corners.length < 2 || !metrics) return null;
+
+        // Compute bounds on raw lat/lon (same logic as in CornersMap)
+        let minLat = corners[0].latitude, maxLat = corners[0].latitude;
+        let minLon = corners[0].longitude, maxLon = corners[0].longitude;
+        for (const p of corners) {
+            if (p.latitude < minLat) minLat = p.latitude;
+            if (p.latitude > maxLat) maxLat = p.latitude;
+            if (p.longitude < minLon) minLon = p.longitude;
+            if (p.longitude > maxLon) maxLon = p.longitude;
+        }
+        const latSpan = Math.max(1e-6, maxLat - minLat);
+        const lonSpan = Math.max(1e-6, maxLon - minLon);
+
+        const innerW = width - padding * 2;
+        const innerH = height - padding * 2;
+
+        const allXY = metrics.xy;
+        let minX = allXY[0].x, maxX = allXY[0].x;
+        let minY = allXY[0].y, maxY = allXY[0].y;
+        for (const p of allXY) {
+            if (p.x < minX) minX = p.x;
+            if (p.x > maxX) maxX = p.x;
+            if (p.y < minY) minY = p.y;
+            if (p.y > maxY) maxY = p.y;
+        }
+
+        const meterSpanX = Math.max(1e-6, maxX - minX);
+        const meterSpanY = Math.max(1e-6, maxY - minY);
+
+        // The desktop app's scale is **meters per pixel (m/px)**
+        const mapPixelWidth = innerW;
+        const mapPixelHeight = innerH;
+
+        // Calculate the scale based on the visible bounds on the screen
+        // Scale is the larger ratio of (meters_span / pixel_span) to fit on screen
+        const scaleMetersPerPixel = Math.max(meterSpanX / mapPixelWidth, meterSpanY / mapPixelHeight);
+
+        // Transform the meter coordinates to pixel coordinates for the desktop app
+        // The desktop app expects normalized coordinates (like 0,0 to maxW,maxH)
+        const transformedPoints = allXY.map((p: XY) => ({
+            // Normalize the x and y coordinates relative to the bounding box in meters
+            // Then scale that normalized value by the map's pixel width/height (innerW/innerH)
+            // Adding 'padding' here acts as the offset
+            x: Math.round((p.x - minX) / scaleMetersPerPixel + padding),
+            y: Math.round((p.y - minY) / scaleMetersPerPixel + padding),
+        }));
+
+        const isClosed = metrics.closed;
+
+        return {
+            points: transformedPoints,
+            closed: isClosed,
+            scale: scaleMetersPerPixel,
+        };
+    }, [corners, metrics, width, height, padding]);
+
+    return exportData;
+}
+
+
+export default function GardenCornersOnly() {
+    const [corners, setCorners] = useState<Corner[]>([]);
+    const [isAveraging, setIsAveraging] = useState(false);
+
+    const metrics = useMetrics(corners);
+    const exportData = useExportData(corners, metrics);
+
+    const addCorner = useCallback(async () => {
+        if (isAveraging) return;
+        setIsAveraging(true);
+        const c = await averageCorner(20);
+        setIsAveraging(false);
+        if (!c) {
+            Alert.alert('No good GPS', 'Move to a clearer sky view and try again.');
+            return;
+        }
+        setCorners((prev) => [...prev, c]);
+    }, [isAveraging]);
 
     return (
         <View style={styles.container}>
@@ -135,9 +242,6 @@ export default function GardenCornersOnly() {
 
             <View style={styles.controls}>
                 <Button theme="primary" label={isAveraging ? 'Averaging (10s)…' : 'Mark Corner (10s)'} onPress={addCorner} />
-                <Button label="Undo Corner" onPress={undoCorner} />
-                <Button label="Close Polygon" onPress={closePolygon} />
-                <Button label="Reset" onPress={resetAll} />
             </View>
 
             <ScrollView style={styles.metrics} contentContainerStyle={{ paddingVertical: 8 }}>
@@ -145,6 +249,7 @@ export default function GardenCornersOnly() {
                     <View>
                         <RNText style={styles.metricText}>Perimeter: {metrics.perim.toFixed(2)} m</RNText>
                         <RNText style={styles.metricText}>Area: {metrics.area.toFixed(2)} m²</RNText>
+                        {exportData && <RNText style={styles.metricTextDim}>Export Scale (m/px): {exportData.scale.toFixed(6)}</RNText>}
                         <RNText style={[styles.metricTextDim, { marginTop: 6 }]}>Tip: For best accuracy, stand still with a clear sky view while marking each corner.</RNText>
                     </View>
                 ) : (
@@ -156,13 +261,13 @@ export default function GardenCornersOnly() {
 }
 
 /** Map component — draws corners, connects them, and annotates edge lengths **/
-function CornersMap({ corners, metrics }: { corners: Corner[]; metrics: null | { proj: ReturnType<typeof toMetersProjector>; xy: XY[]; perim: number; area: number } }) {
+function CornersMap({ corners, metrics }: { corners: Corner[]; metrics: null | ReturnType<typeof useMetrics> }) {
     const { width } = useWindowDimensions();
     const height = Math.min(340, Math.max(220, Math.round(width * 0.6)));
     const padding = 16;
 
     const { polyPoints, dots, edgeLabels } = useMemo(() => {
-        if (corners.length === 0) return { polyPoints: '', dots: [] as XY[], edgeLabels: [] as { x: number; y: number; text: string }[] };
+        if (corners.length === 0 || !metrics) return { polyPoints: '', dots: [] as XY[], edgeLabels: [] as { x: number; y: number; text: string }[] };
 
         // Compute bounds on raw lat/lon
         let minLat = corners[0].latitude, maxLat = corners[0].latitude;
@@ -197,12 +302,15 @@ function CornersMap({ corners, metrics }: { corners: Corner[]; metrics: null | {
 
         const labels: { x: number; y: number; text: string }[] = [];
         if (metrics && metrics.xy.length >= 2) {
+            // Need a version of metrics.xy that includes the closing point for edge lengths
+            const xyWithClosing = metrics.closed ? [...metrics.xy, metrics.xy[0]] : metrics.xy;
             const edges = edgeLengthsMeters(metrics.xy);
-            for (let i = 0; i < metrics.xy.length; i++) {
-                const a = metrics.xy[i], b = metrics.xy[(i + 1) % metrics.xy.length];
+
+            for (let i = 0; i < xyWithClosing.length - 1; i++) {
+                const a = metrics.xy[i], b = metrics.xy[(i + 1) % metrics.xy.length]; // use metrics.xy for real projection
                 const mid: XY = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
                 const { lat, lon } = metrics.proj.toLatLon(mid.x, mid.y);
-                const mpt = project(lat, lon);
+                const mpt = project(lat, lon); // Project back to screen space
                 labels.push({ x: mpt.x, y: mpt.y, text: formatMeters(edges[i]) });
             }
         }
