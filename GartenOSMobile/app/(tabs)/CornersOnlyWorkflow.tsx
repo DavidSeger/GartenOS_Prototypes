@@ -233,6 +233,48 @@ function useExportData(corners: Corner[], metrics: ReturnType<typeof useMetrics>
 }
 
 
+function buildGardenExportJson(
+    exportData: null | { points: XY[]; closed: boolean; scale: number },
+    opts?: {
+        surface?: string;
+        unit?: 'm';
+        calibratedEdgeIndex?: number;
+        annotations?: Array<{ id: string; type: string; x: number; y: number }>;
+        zones?: any[];
+        metaApp?: string;
+        includeMetrics?: boolean;
+        metrics?: null | { perim: number; area: number };
+    }
+): string {
+    if (!exportData || !exportData.points?.length) {
+        throw new Error('Nothing to export: no points.');
+    }
+
+    const payload: any = {
+        points: exportData.points.map(p => ({ x: Math.round(p.x), y: Math.round(p.y) })),
+        closed: exportData.closed,
+        surface: opts?.surface ?? 'unknown',
+        scale: exportData.scale,     // meters per pixel
+        unit: opts?.unit ?? 'm',
+        calibratedEdgeIndex: opts?.calibratedEdgeIndex ?? -1,
+        annotations: opts?.annotations ?? [],
+        zones: opts?.zones ?? [],
+        _meta: {
+            ts: Date.now(),
+            app: opts?.metaApp ?? 'garden-mapper-proto',
+        },
+    };
+
+    if (opts?.includeMetrics && opts.metrics) {
+        payload._metrics = {
+            perimeter_m: Number(opts.metrics.perim.toFixed(3)),
+            area_m2: Number(opts.metrics.area.toFixed(3)),
+        };
+    }
+
+    return JSON.stringify(payload);
+}
+
 export default function GardenCornersOnly() {
     const [corners, setCorners] = useState<Corner[]>([]);
     const [isAveraging, setIsAveraging] = useState(false);
@@ -252,13 +294,68 @@ export default function GardenCornersOnly() {
         setCorners((prev) => [...prev, c]);
     }, [isAveraging]);
 
+    const closePolygon = useCallback(() => {
+        if (corners.length < 3) {
+            Alert.alert('Need more corners', 'Add at least 3 corners to close the area.');
+            return;
+        }
+
+        // Check if already closed (≈5 cm threshold, same as metrics logic)
+        const first = corners[0];
+        const last = corners[corners.length - 1];
+        const proj = toMetersProjector(first.latitude, first.longitude);
+        const delta = proj.toXY(last.latitude, last.longitude);
+        const distMeters = Math.hypot(delta.x, delta.y);
+
+        if (distMeters < 0.05) {
+            // Already closed (or last coincides with first within 5 cm)
+            Alert.alert('Already closed', 'The first and last corner are already connected.');
+            return;
+        }
+
+        // Append an exact copy of the first corner (fresh timestamp is fine)
+        setCorners(prev => [...prev, { ...prev[0], timestamp: Date.now() }]);
+    }, [corners, setCorners]);
+
+    const onExport = useCallback(async () => {
+        try {
+            if (!exportData) {
+                Alert.alert('Nothing to export', 'Add at least 2 corners first.');
+                return;
+            }
+
+            const json = buildGardenExportJson(exportData, {
+                surface: 'grass',
+                calibratedEdgeIndex: -1,
+                annotations: [],
+                zones: [],
+                includeMetrics: true,
+                metrics: metrics ? { perim: metrics.perim, area: metrics.area } : null,
+            });
+
+            // write file (timestamped)
+            const fname = `garden-map-${Date.now()}.json`;
+            const file = new File(Paths.document, fname);
+            file.create();
+            file.write(json);
+
+            await Sharing.shareAsync(file.uri, {
+                mimeType: 'application/json',
+                dialogTitle: 'Export garden JSON',
+            });
+        } catch (e: any) {
+            Alert.alert('Export failed', String(e?.message ?? e));
+        }
+    }, [exportData, metrics]);
+
     return (
         <View style={styles.container}>
             <CornersMap corners={corners} metrics={metrics} />
 
             <View style={styles.controls}>
                 <Button theme="primary" label={isAveraging ? 'Averaging (10s)…' : 'Mark Corner (10s)'} onPress={addCorner} />
-                <Button label="Download hello-world.txt" onPress={saveHelloWorldToDownloads} />
+                <Button label="close area" onPress={closePolygon} />
+                <Button label="Export garden map" onPress={onExport} />
             </View>
 
             <ScrollView style={styles.metrics} contentContainerStyle={{ paddingVertical: 8 }}>
