@@ -8,17 +8,17 @@ import * as Location from 'expo-location';
 import * as Sharing from 'expo-sharing';
 import { styled } from 'nativewind';
 
-import { Screen } from '../types';
-import { transcribeAudio } from '../services/geminiService';
-import { averageCorner, Corner, toMetersProjector, useMetrics } from './utils/geo';
+import { Screen } from '../../types.ts';
+import { transcribeAudio } from '../../services/geminiService.ts';
+import { averageCorner, Corner, toMetersProjector, useMetrics } from '../utils/geo.ts';
 
-import HomeScreen from '../components/HomeScreen';
-import RecordingScreen from '../components/RecordingScreen';
-import PreviewScreen from '../components/PreviewScreen';
-import MeasurementScreen from '../components/MeasurementScreen';
-import CertScreen from '../components/CertScreen';
-import SubmittedScreen from '../components/SubmittedScreen';
-import { CornerExportData } from '../components/CornersMap';
+import HomeScreen from '../../components/HomeScreen.tsx';
+import RecordingScreen from '../../components/RecordingScreen.tsx';
+import PreviewScreen from '../../components/PreviewScreen.tsx';
+import MeasurementScreen from '../../components/MeasurementScreen.tsx';
+import CertScreen from '../../components/CertScreen.tsx';
+import SubmittedScreen from '../../components/SubmittedScreen.tsx';
+import { CornerExportData } from '../../components/CornersMap.tsx';
 
 const StyledSafeAreaView = styled(SafeAreaView);
 const StyledView = styled(View);
