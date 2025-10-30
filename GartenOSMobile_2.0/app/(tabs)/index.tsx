@@ -106,6 +106,21 @@ export default function App() {
     };
   }, []);
 
+  function zoneFillColor(type?: string) {
+    const t = (type || '').toLowerCase();
+    if (t === 'soil') return '#8B5A2B';
+    if (t === 'grass') return '#2E8B57';
+    if (t === 'concrete') return '#9E9E9E';
+    return '#888888';
+  }
+  function zoneStrokeColor(type?: string) {
+    const t = (type || '').toLowerCase();
+    if (t === 'soil') return '#5E3B1C';
+    if (t === 'grass') return '#1F5E3B';
+    if (t === 'concrete') return '#707070';
+    return '#666666';
+  }
+
   const startTimer = useCallback(() => {
     if (timerRef.current) {
       clearInterval(timerRef.current);
@@ -657,20 +672,21 @@ export default function App() {
                         const H = 640;
                         const { toFit, fittedPts } = fitToView(cornerDrawing.points, W, H, 24);
 
-                        (cornerDrawing.zones ?? []).forEach(z => {
-                          if (!z.points?.length) return;
+                        {(cornerDrawing.zones ?? []).map(z => {
+                          if (!z.points?.length) return null;
                           const zPts = z.points.map(toFit);
-
                           return (
                               <Polygon
                                   key={`zone-${z.id}`}
                                   points={zPts.map(p => `${p.x},${p.y}`).join(' ')}
+                                  stroke={zoneStrokeColor(z.type)}
+                                  fill={zoneFillColor(z.type)}
                                   strokeWidth={1}
-                                  strokeOpacity={0.5}
-                                  fillOpacity={0.14}
+                                  strokeOpacity={0.85}
+                                  fillOpacity={0.28}
                               />
                           );
-                        });
+                        })}
 
                         if (cornerDrawing.closed) {
 
