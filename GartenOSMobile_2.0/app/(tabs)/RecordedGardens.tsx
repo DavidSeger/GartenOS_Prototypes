@@ -1,10 +1,20 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
-import { File } from 'expo-file-system';
-import Svg, { Polygon, Polyline, Circle, Text as SvgText, G } from 'react-native-svg';
+import {File} from 'expo-file-system';
+import Svg, {
+    Polygon,
+    Polyline,
+    Circle,
+    Text as SvgText,
+    G,
+    Path,
+} from 'react-native-svg';
 
 type XY = { x: number; y: number };
+type Annotation = { id: string; type: 'tree' | 'water' | string; x: number; y: number };
+type Zone = { id: string; type?: string; points: XY[] };
+
 type GardenJson = {
     points: XY[];
     closed?: boolean;
@@ -12,8 +22,8 @@ type GardenJson = {
     scale?: number;   // meters per screen unit
     unit?: string;    // usually "m"
     calibratedEdgeIndex?: number;
-    annotations?: any[];
-    zones?: any[];
+    annotations?: Annotation[];
+    zones?: Zone[];
     _meta?: { ts?: number; app?: string };
     _metrics?: { perimeter_m?: number; area_m2?: number };
 };
@@ -33,11 +43,13 @@ export default function Index() {
                 multiple: false,
                 copyToCacheDirectory: true,
             });
+
             const result = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true });
+
             // @ts-ignore
             const file = new File(result.assets[0]);
-
             const json = JSON.parse(file.textSync()) as GardenJson;
+
             if (!json || !Array.isArray(json.points) || json.points.length < 2) {
                 throw new Error('Invalid file: expected { points: [{x,y}, ...] }.');
             }
@@ -73,14 +85,23 @@ export default function Index() {
         const tx = -minX * scale + padding;
         const ty = -minY * scale + padding;
 
-        // flip Y for SVG (optional): here we keep the original orientation,
-        // assuming your points are already in screen coords (y down).
-        const fittedPts = data.points.map(p => ({
-            x: p.x * scale + tx,
-            y: p.y * scale + ty,
+        const applyFit = (p: XY) => ({ x: p.x * scale + tx, y: p.y * scale + ty });
+
+        const fittedPts = data.points.map(applyFit);
+
+        // Zones (if any)
+        const fittedZones = (data.zones ?? [])
+            .filter(z => Array.isArray(z.points) && z.points.length >= 2)
+            .map(z => ({ ...z, points: z.points.map(applyFit) }));
+
+        // Annotations (icons)
+        const fittedAnnotations = (data.annotations ?? []).map(a => ({
+            ...a,
+            x: a.x * scale + tx,
+            y: a.y * scale + ty,
         }));
 
-        return { fittedPts, scale, tx, ty };
+        return { fittedPts, fittedZones, fittedAnnotations, scale, tx, ty };
     }, [data]);
 
     // Metrics: use _metrics if available; otherwise compute from points & scale
@@ -120,9 +141,7 @@ export default function Index() {
 
             {!data && (
                 <View style={styles.placeholder}>
-                    <Text style={styles.placeholderText}>
-                        Pick a garden JSON.
-                    </Text>
+                    <Text style={styles.placeholderText}>Pick a garden JSON.</Text>
                     {error ? <Text style={styles.errorText}>{error}</Text> : null}
                 </View>
             )}
@@ -132,12 +151,24 @@ export default function Index() {
                     <View style={styles.card}>
                         <Svg width={VIEW_W} height={VIEW_H} style={styles.svg}>
                             <G>
+                                {/* Zones (semi-transparent fills; different alpha by type) */}
+                                {fitted.fittedZones.map(zone => (
+                                    <Polygon
+                                        key={zone.id}
+                                        points={toSvgPoints(zone.points)}
+                                        strokeWidth={1}
+                                        strokeOpacity={0.5}
+                                        fillOpacity={zoneFillOpacity(zone.type)}
+                                    />
+                                ))}
+
+                                {/* Garden outline */}
                                 {data.closed ? (
                                     <Polygon
                                         points={toSvgPoints(fitted.fittedPts)}
                                         strokeWidth={2}
                                         strokeOpacity={0.9}
-                                        fillOpacity={0.15}
+                                        fillOpacity={0.12}
                                     />
                                 ) : (
                                     <Polyline
@@ -148,15 +179,35 @@ export default function Index() {
                                     />
                                 )}
 
-                                {/* corner dots with indices */}
+                                {/* Corner dots with indices */}
                                 {fitted.fittedPts.map((p, i) => (
-                                    <React.Fragment key={i}>
+                                    <G key={`corner-${i}`}>
                                         <Circle cx={p.x} cy={p.y} r={3} />
-                                        <SvgText x={p.x + 6} y={p.y - 6} fontSize={10}>{String(i + 1)}</SvgText>
-                                    </React.Fragment>
+                                        <SvgText x={p.x + 6} y={p.y - 6} fontSize={10}>
+                                            {String(i + 1)}
+                                        </SvgText>
+                                    </G>
+                                ))}
+
+                                {/* Annotations: trees & water */}
+                                {fitted.fittedAnnotations.map(a => (
+                                    <G key={a.id} x={a.x} y={a.y}>
+                                        {a.type === 'tree' ? (
+                                            <TreeIcon size={16} />
+                                        ) : a.type === 'water' ? (
+                                            <WaterIcon size={16} />
+                                        ) : (
+                                            <UnknownIcon size={12} />
+                                        )}
+                                    </G>
                                 ))}
                             </G>
                         </Svg>
+
+                        <View style={styles.legend}>
+                            <LegendItem label="Tree" icon={<TreeIcon size={12} />} />
+                            <LegendItem label="Water" icon={<WaterIcon size={12} />} />
+                        </View>
 
                         <View style={styles.stats}>
                             <Row label="Closed" value={data.closed ? 'Yes' : 'No'} />
@@ -164,23 +215,13 @@ export default function Index() {
                             <Row label="Unit" value={data.unit ?? 'm'} />
                             <Row
                                 label="Perimeter"
-                                value={
-                                    metrics?.perimeter_m != null
-                                        ? `${metrics.perimeter_m.toFixed(2)} m`
-                                        : 'n/a'
-                                }
+                                value={metrics?.perimeter_m != null ? `${metrics.perimeter_m.toFixed(2)} m` : 'n/a'}
                             />
                             <Row
                                 label="Area"
-                                value={
-                                    metrics?.area_m2 != null
-                                        ? `${metrics.area_m2.toFixed(3)} m²`
-                                        : 'n/a'
-                                }
+                                value={metrics?.area_m2 != null ? `${metrics.area_m2.toFixed(3)} m²` : 'n/a'}
                             />
-                            {data._meta?.ts ? (
-                                <Row label="Exported" value={formatWhen(data._meta.ts)} />
-                            ) : null}
+                            {data._meta?.ts ? <Row label="Exported" value={formatWhen(data._meta.ts)} /> : null}
                             {data._meta?.app ? <Row label="App" value={data._meta.app} /> : null}
                         </View>
                     </View>
@@ -190,10 +231,56 @@ export default function Index() {
     );
 }
 
-/* ---------- geometry helpers for screen-space points ---------- */
+/* ---------- icons (inline SVG) ---------- */
+function TreeIcon({ size = 16 }: { size?: number }) {
+    // Simple trunk + canopy
+    const s = size;
+    const trunkW = s * 0.2;
+    const trunkH = s * 0.4;
+    const canopyR = s * 0.45;
+    return (
+        <G>
+            {/* canopy */}
+            <Circle cx={0} cy={-trunkH - canopyR * 0.2} r={canopyR} />
+            {/* trunk */}
+            <RectLike x={-trunkW / 2} y={-trunkH} width={trunkW} height={trunkH} />
+        </G>
+    );
+}
+
+function WaterIcon({ size = 16 }: { size?: number }) {
+    // Droplet path centered at (0,0), pointing up
+    const s = size;
+    const r = s * 0.45;
+    return (
+        <Path
+            d={`
+        M 0 ${-r}
+        C ${r * 0.55} ${-r * 0.3}, ${r} ${-r * 0.05}, ${r} ${r * 0.35}
+        C ${r} ${r * 0.7}, ${r * 0.55} ${r}, 0 ${r}
+        C ${-r * 0.55} ${r}, ${-r} ${r * 0.7}, ${-r} ${r * 0.35}
+        C ${-r} ${-r * 0.05}, ${-r * 0.55} ${-r * 0.3}, 0 ${-r}
+        Z
+      `}
+        />
+    );
+}
+
+function UnknownIcon({ size = 12 }: { size?: number }) {
+    const s = size;
+    return <Circle cx={0} cy={0} r={s * 0.4} />;
+}
+
+// tiny rect helper using Path so we don't import Rect separately
+function RectLike({ x, y, width, height }: { x: number; y: number; width: number; height: number }) {
+    return <Path d={`M ${x} ${y} h ${width} v ${height} h ${-width} Z`} />;
+}
+
+/* ---------- geometry helpers ---------- */
 function toSvgPoints(pts: XY[]) {
     return pts.map(p => `${p.x},${p.y}`).join(' ');
 }
+
 function polyPerimeter(pts: XY[], closed: boolean) {
     if (pts.length < 2) return 0;
     let p = 0;
@@ -205,6 +292,7 @@ function polyPerimeter(pts: XY[], closed: boolean) {
     }
     return p;
 }
+
 function shoelaceArea(pts: XY[]) {
     if (pts.length < 3) return 0;
     let sum = 0;
@@ -216,7 +304,18 @@ function shoelaceArea(pts: XY[]) {
     return Math.abs(sum) / 2;
 }
 
-/* ---------- UI bits ---------- */
+/* ---------- legend & rows ---------- */
+function LegendItem({ label, icon }: { label: string; icon: React.ReactNode }) {
+    return (
+        <View style={styles.legendItem}>
+            <Svg width={16} height={16} style={{ marginRight: 6 }}>
+                <G x={8} y={8}>{icon}</G>
+            </Svg>
+            <Text style={styles.legendText}>{label}</Text>
+        </View>
+    );
+}
+
 function Row({ label, value }: { label: string; value: string }) {
     return (
         <View style={styles.row}>
@@ -236,6 +335,21 @@ function formatWhen(epochMs?: number) {
     }
 }
 
+function zoneFillOpacity(type?: string) {
+    // Slightly different opacities by zone type; adjust as you like
+    switch (type) {
+        case 'grass':
+            return 0.18;
+        case 'flowerbed':
+            return 0.12;
+        case 'paved':
+            return 0.1;
+        default:
+            return 0.14;
+    }
+}
+
+/* ---------- styles ---------- */
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#25292e' },
     header: { paddingTop: 28, paddingHorizontal: 16, paddingBottom: 12 },
@@ -266,6 +380,10 @@ const styles = StyleSheet.create({
         elevation: 3,
     },
     svg: { alignSelf: 'center', borderRadius: 12, backgroundColor: '#f6faf6' },
+
+    legend: { flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 10 },
+    legendItem: { flexDirection: 'row', alignItems: 'center' },
+    legendText: { color: '#111827' },
 
     stats: {
         marginTop: 12,
