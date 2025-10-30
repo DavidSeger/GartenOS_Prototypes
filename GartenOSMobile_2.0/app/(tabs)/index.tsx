@@ -19,25 +19,27 @@ import MeasurementScreen from '../../components/MeasurementScreen.tsx';
 import CertScreen from '../../components/CertScreen.tsx';
 import SubmittedScreen from '../../components/SubmittedScreen.tsx';
 import { CornerExportData } from '../../components/CornersMap.tsx';
+import { getAnnotationIcon } from '../../components/MapIcons.tsx';
+import Svg, { G, Polygon, Polyline, Circle, Text as SvgText } from 'react-native-svg';
 
 const StyledSafeAreaView = styled(SafeAreaView);
 const StyledView = styled(View);
 const DEFAULT_TRANSCRIPT_MESSAGE =
-  'The auto-generated transcript will appear here after recording.';
+    'The auto-generated transcript will appear here after recording.';
 type CameraViewInstance = React.ComponentRef<typeof CameraView>;
 type TrackPoint = { latitude: number; longitude: number; timestamp: number };
 
 const blobToBase64 = (blob: Blob): Promise<string> =>
-  new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const dataUrl = reader.result as string;
-      const base64 = dataUrl.split(',')[1];
-      resolve(base64);
-    };
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(blob);
-  });
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const dataUrl = reader.result as string;
+        const base64 = dataUrl.split(',')[1];
+        resolve(base64);
+      };
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(blob);
+    });
 
 export default function App() {
   const [activeScreen, setActiveScreen] = useState<Screen>(Screen.Home);
@@ -56,6 +58,21 @@ export default function App() {
   const [corners, setCorners] = useState<Corner[]>([]);
   const [isAveragingCorner, setIsAveragingCorner] = useState<boolean>(false);
   const [isExporting, setIsExporting] = useState<boolean>(false);
+
+  type XY = { x: number; y: number };
+  type Annotation = { id: string; type: 'tree' | 'water' | string; x: number; y: number };
+  type Zone = { id: string; type?: string; points: XY[] };
+
+  type CornerDrawing = {
+    points: XY[];
+    closed?: boolean;
+    annotations?: Annotation[];
+    zones?: Zone[];
+    scale?: number;
+    unit?: string;
+  };
+
+  const [cornerDrawing, setCornerDrawing] = useState<CornerDrawing | null>(null);
 
   const cameraRef = useRef<CameraViewInstance | null>(null);
   const recordingPromiseRef = useRef<Promise<{ uri: string } | undefined> | null>(null);
@@ -122,28 +139,28 @@ export default function App() {
       setTrack([]);
 
       const sub = await Location.watchPositionAsync(
-        {
-          accuracy: Location.Accuracy.BestForNavigation,
-          timeInterval: 1000,
-          distanceInterval: 1,
-          mayShowUserSettingsDialog: true,
-        },
-        (pos) => {
-          const acc = pos.coords.accuracy ?? 99;
-          if (acc > 8) return;
-          const tp: TrackPoint = {
-            latitude: pos.coords.latitude,
-            longitude: pos.coords.longitude,
-            timestamp: pos.timestamp ?? Date.now(),
-          };
-          setTrack((prev) => [...prev, tp]);
-        },
+          {
+            accuracy: Location.Accuracy.BestForNavigation,
+            timeInterval: 1000,
+            distanceInterval: 1,
+            mayShowUserSettingsDialog: true,
+          },
+          (pos) => {
+            const acc = pos.coords.accuracy ?? 99;
+            if (acc > 8) return;
+            const tp: TrackPoint = {
+              latitude: pos.coords.latitude,
+              longitude: pos.coords.longitude,
+              timestamp: pos.timestamp ?? Date.now(),
+            };
+            setTrack((prev) => [...prev, tp]);
+          },
       );
       locationWatchRef.current = sub;
       return true;
     } catch (error) {
       const details =
-        error instanceof Error ? error.message : typeof error === 'string' ? error : JSON.stringify(error);
+          error instanceof Error ? error.message : typeof error === 'string' ? error : JSON.stringify(error);
       Alert.alert('Location error', details || 'Unable to start GPS tracking.');
       return false;
     }
@@ -161,15 +178,15 @@ export default function App() {
       const corner = await averageCorner(20);
       if (!corner) {
         Alert.alert(
-          'No reliable GPS fix',
-          'Stand still with a clear sky view and try capturing the corner again.',
+            'No reliable GPS fix',
+            'Stand still with a clear sky view and try capturing the corner again.',
         );
         return;
       }
       setCorners((prev) => [...prev, corner]);
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : 'Unable to capture a stable corner at this time.';
+          error instanceof Error ? error.message : 'Unable to capture a stable corner at this time.';
       Alert.alert('Corner capture failed', message);
     } finally {
       setIsAveragingCorner(false);
@@ -236,24 +253,24 @@ export default function App() {
   }, []);
 
   const handleRecordingComplete = useCallback(
-    async (uri: string | null) => {
-      stopTimer();
-      recordingPromiseRef.current = null;
-      setIsRecording(false);
-      setIsPaused(false);
-      await configureAudioMode(false);
-      stopLocationTracking();
+      async (uri: string | null) => {
+        stopTimer();
+        recordingPromiseRef.current = null;
+        setIsRecording(false);
+        setIsPaused(false);
+        await configureAudioMode(false);
+        stopLocationTracking();
 
-      if (!uri) {
-        Alert.alert('Recording unavailable', 'No video was captured. Please try again.');
-        setActiveScreen(Screen.Home);
-        return;
-      }
+        if (!uri) {
+          Alert.alert('Recording unavailable', 'No video was captured. Please try again.');
+          setActiveScreen(Screen.Home);
+          return;
+        }
 
-      setVideoUri(uri);
-      setActiveScreen(Screen.Preview);
-    },
-    [configureAudioMode, stopLocationTracking, stopTimer],
+        setVideoUri(uri);
+        setActiveScreen(Screen.Preview);
+      },
+      [configureAudioMode, stopLocationTracking, stopTimer],
   );
 
   const startRecording = useCallback(async () => {
@@ -298,7 +315,7 @@ export default function App() {
       await handleRecordingComplete(recording?.uri ?? null);
     } catch (error) {
       const details =
-        error instanceof Error ? error.message : typeof error === 'string' ? error : JSON.stringify(error);
+          error instanceof Error ? error.message : typeof error === 'string' ? error : JSON.stringify(error);
       console.error('Error during recording:', details);
       stopTimer();
       recordingPromiseRef.current = null;
@@ -306,10 +323,10 @@ export default function App() {
       await configureAudioMode(false);
       stopLocationTracking();
       Alert.alert(
-        'Recording error',
-        details === 'An error occurred while recording a video'
-          ? 'The current device or simulator does not support video capture. Please try on a physical device with camera access.'
-          : details || 'Something went wrong while recording. Please try again.',
+          'Recording error',
+          details === 'An error occurred while recording a video'
+              ? 'The current device or simulator does not support video capture. Please try on a physical device with camera access.'
+              : details || 'Something went wrong while recording. Please try again.',
       );
       setActiveScreen(Screen.Home);
     }
@@ -380,100 +397,101 @@ export default function App() {
   }, [configureAudioMode, deleteFileIfExists, stopLocationTracking, stopTimer, videoUri]);
 
   const handleExportGarden = useCallback(
-    async (exportData: CornerExportData | null) => {
-      if (!exportData || !metrics) {
-        Alert.alert('Export unavailable', 'Add at least two corners before exporting.');
-        return;
-      }
-
-      try {
-        setIsExporting(true);
-        const payload = {
-          version: 1,
-          exportedAt: Date.now(),
-          transcript,
-          videoUri,
-          gpsTrack: track,
-          corners,
-          cornerDrawing: {
-            ...exportData,
-          },
-          metrics: {
-            perimeter_m: Number(metrics.perim.toFixed(3)),
-            area_m2: Number(metrics.area.toFixed(3)),
-            closed: metrics.closed,
-          },
-        };
-
-        const dir = FileSystem.documentDirectory ?? FileSystem.cacheDirectory;
-        if (!dir) {
-          throw new Error('No writable directory available on this device.');
+      async (exportData: CornerExportData | null) => {
+        if (!exportData || !metrics) {
+          Alert.alert('Export unavailable', 'Add at least two corners before exporting.');
+          return;
         }
-        const fname = `garden-session-${Date.now()}.json`;
-        const uri = `${dir}${fname}`;
-        await FileSystem.writeAsStringAsync(uri, JSON.stringify(payload, null, 2));
 
-        const canShare = Sharing.isAvailableAsync ? await Sharing.isAvailableAsync() : false;
-        if (canShare) {
-          await Sharing.shareAsync(uri, {
-            mimeType: 'application/json',
-            dialogTitle: 'Export garden JSON',
-          });
-        } else {
-          Alert.alert('Export saved', `Garden export saved to ${uri}`);
+        try {
+          setIsExporting(true);
+          setCornerDrawing(exportData as unknown as CornerDrawing);
+          const payload = {
+            version: 1,
+            exportedAt: Date.now(),
+            transcript,
+            videoUri,
+            gpsTrack: track,
+            corners,
+            cornerDrawing: {
+              ...exportData,
+            },
+            metrics: {
+              perimeter_m: Number(metrics.perim.toFixed(3)),
+              area_m2: Number(metrics.area.toFixed(3)),
+              closed: metrics.closed,
+            },
+          };
+
+          const dir = FileSystem.documentDirectory ?? FileSystem.cacheDirectory;
+          if (!dir) {
+            throw new Error('No writable directory available on this device.');
+          }
+          const fname = `garden-session-${Date.now()}.json`;
+          const uri = `${dir}${fname}`;
+          await FileSystem.writeAsStringAsync(uri, JSON.stringify(payload, null, 2));
+
+          const canShare = Sharing.isAvailableAsync ? await Sharing.isAvailableAsync() : false;
+          if (canShare) {
+            await Sharing.shareAsync(uri, {
+              mimeType: 'application/json',
+              dialogTitle: 'Export garden JSON',
+            });
+          } else {
+            Alert.alert('Export saved', `Garden export saved to ${uri}`);
+          }
+        } catch (error) {
+          const message =
+              error instanceof Error ? error.message : 'An unknown error occurred during export.';
+          Alert.alert('Export failed', message);
+        } finally {
+          setIsExporting(false);
         }
-      } catch (error) {
-        const message =
-          error instanceof Error ? error.message : 'An unknown error occurred during export.';
-        Alert.alert('Export failed', message);
-      } finally {
-        setIsExporting(false);
-      }
-    },
-    [corners, metrics, transcript, track, videoUri],
+      },
+      [corners, metrics, transcript, track, videoUri],
   );
 
   const processTranscription = useCallback(
-    async (uri: string) => {
-      setIsProcessing(true);
-      setTranscript('Converting video to audio format...');
+      async (uri: string) => {
+        setIsProcessing(true);
+        setTranscript('Converting video to audio format...');
 
-      try {
-        let base64 = '';
-        let mimeType: 'audio/wav' | 'video/mp4' = 'video/mp4';
+        try {
+          let base64 = '';
+          let mimeType: 'audio/wav' | 'video/mp4' = 'video/mp4';
 
-        if (Platform.OS === 'web') {
-          const response = await fetch(uri);
-          const blob = await response.blob();
-          mimeType = (blob.type as 'video/mp4') || 'video/mp4';
-          base64 = await blobToBase64(blob);
-        } else {
-          base64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
+          if (Platform.OS === 'web') {
+            const response = await fetch(uri);
+            const blob = await response.blob();
+            mimeType = (blob.type as 'video/mp4') || 'video/mp4';
+            base64 = await blobToBase64(blob);
+          } else {
+            base64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
+          }
+
+          setTranscript('Transcribing audio with Gemini... Please wait.');
+          const result = await transcribeAudio(base64, mimeType);
+          setTranscript(result);
+        } catch (error) {
+          console.error('Error during transcription process:', error);
+          const message =
+              error instanceof Error
+                  ? error.message
+                  : 'An unknown error occurred during transcription.';
+          setTranscript(message);
+        } finally {
+          setIsProcessing(false);
         }
-
-        setTranscript('Transcribing audio with Gemini... Please wait.');
-        const result = await transcribeAudio(base64, mimeType);
-        setTranscript(result);
-      } catch (error) {
-        console.error('Error during transcription process:', error);
-        const message =
-          error instanceof Error
-            ? error.message
-            : 'An unknown error occurred during transcription.';
-        setTranscript(message);
-      } finally {
-        setIsProcessing(false);
-      }
-    },
-    [],
+      },
+      [],
   );
 
   useEffect(() => {
     if (
-      activeScreen === Screen.Preview &&
-      videoUri &&
-      !isProcessing &&
-      transcript.startsWith('The auto-generated')
+        activeScreen === Screen.Preview &&
+        videoUri &&
+        !isProcessing &&
+        transcript.startsWith('The auto-generated')
     ) {
       processTranscription(videoUri);
     }
@@ -512,52 +530,77 @@ export default function App() {
     return <Text>No access to camera</Text>;
   }
 
+  function fitToView(
+      pts: XY[],
+      width: number,
+      height: number,
+      padding = 12
+  ) {
+    if (!pts.length) return { toFit: (p: XY) => p, fittedPts: pts };
+    let minX = pts[0].x, minY = pts[0].y, maxX = pts[0].x, maxY = pts[0].y;
+    for (const p of pts) {
+      if (p.x < minX) minX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y > maxY) maxY = p.y;
+    }
+    const w = Math.max(1, maxX - minX);
+    const h = Math.max(1, maxY - minY);
+    const sx = (width - 2 * padding) / w;
+    const sy = (height - 2 * padding) / h;
+    const s = Math.min(sx, sy);
+    const tx = -minX * s + padding;
+    const ty = -minY * s + padding;
+    const toFit = (p: XY) => ({ x: p.x * s + tx, y: p.y * s + ty });
+    return { toFit, fittedPts: pts.map(toFit) };
+  }
+
   const renderScreen = () => {
     switch (activeScreen) {
       case Screen.Recording:
         return (
-          <RecordingScreen
-            elapsedSeconds={recordingSeconds}
-            isPauseSupported={isPauseSupported}
-            isPaused={isPaused}
-            onPause={pauseRecording}
-            onStop={stopRecording}
-            isStoppingDisabled={!isRecording}
-            onMarkCorner={markCorner}
-            isMarkingCorner={isAveragingCorner}
-            cornerCount={corners.length}
-            onClosePolygon={closePolygon}
-            canClosePolygon={canClosePolygon}
-          />
+            <RecordingScreen
+                elapsedSeconds={recordingSeconds}
+                isPauseSupported={isPauseSupported}
+                isPaused={isPaused}
+                onPause={pauseRecording}
+                onStop={stopRecording}
+                isStoppingDisabled={!isRecording}
+                onMarkCorner={markCorner}
+                isMarkingCorner={isAveragingCorner}
+                cornerCount={corners.length}
+                onClosePolygon={closePolygon}
+                canClosePolygon={canClosePolygon}
+            />
         );
       case Screen.Preview:
         return (
-          <PreviewScreen
-            videoUri={videoUri}
-            transcript={transcript}
-            isProcessing={isProcessing}
-            onNavigate={setActiveScreen}
-            onRetake={retakeRecording}
-            onDownload={Platform.OS === 'web' ? downloadRecording : undefined}
-            track={track}
-            corners={corners}
-            metrics={metrics}
-            canClosePolygon={canClosePolygon}
-            onClosePolygon={closePolygon}
-            isExporting={isExporting}
-            onExport={handleExportGarden}
-            durationSeconds={recordingSeconds}
-          />
+            <PreviewScreen
+                videoUri={videoUri}
+                transcript={transcript}
+                isProcessing={isProcessing}
+                onNavigate={setActiveScreen}
+                onRetake={retakeRecording}
+                onDownload={Platform.OS === 'web' ? downloadRecording : undefined}
+                track={track}
+                corners={corners}
+                metrics={metrics}
+                canClosePolygon={canClosePolygon}
+                onClosePolygon={closePolygon}
+                isExporting={isExporting}
+                onExport={handleExportGarden}
+                durationSeconds={recordingSeconds}
+            />
         );
       case Screen.Measurement:
         return <MeasurementScreen onNavigate={setActiveScreen} />;
       case Screen.Certification:
         return (
-          <CertScreen
-            transcript={transcript}
-            onNavigate={setActiveScreen}
-            onSubmit={() => setActiveScreen(Screen.Submitted)}
-          />
+            <CertScreen
+                transcript={transcript}
+                onNavigate={setActiveScreen}
+                onSubmit={() => setActiveScreen(Screen.Submitted)}
+            />
         );
       case Screen.Submitted:
         return <SubmittedScreen onStartOver={resetApp} />;
@@ -568,47 +611,127 @@ export default function App() {
   };
 
   return (
-    <StyledSafeAreaView className="flex-1 bg-green-50">
-      <StyledView className="flex-1 justify-center items-center">
-        <StyledView
-          className="w-[390px] max-w-[96%] rounded-2xl shadow-lg overflow-hidden border border-green-200"
-          style={{
-            backgroundColor: activeScreen === Screen.Recording ? 'transparent' : '#ffffff',
-            minHeight: 640,
-          }}
-        >
-          <CameraView
-            ref={cameraRef}
-            style={StyleSheet.absoluteFill}
-            active={activeScreen === Screen.Home || activeScreen === Screen.Recording}
-            mode="video"
-            facing={facing}
-            videoQuality="1080p"
-            mute={false}
-            onCameraReady={() => {
-              setIsCameraReady(true);
-              updatePauseSupport();
-            }}
-            onMountError={({ message }) => {
-              const details = message ?? 'Unable to access the camera.';
-              console.error('Camera mount error:', details);
-              Alert.alert('Camera error', details);
-            }}
-          />
+      <StyledSafeAreaView className="flex-1 bg-green-50">
+        <StyledView className="flex-1 justify-center items-center">
           <StyledView
-            className="relative"
-            style={[
-              {
-                zIndex: 10,
-                backgroundColor: activeScreen === Screen.Recording ? 'transparent' : 'white',
-              },
-              activeScreen === Screen.Recording && { flex: 1 },
-            ]}
+              className="w-[390px] max-w-[96%] rounded-2xl shadow-lg overflow-hidden border border-green-200"
+              style={{
+                backgroundColor: activeScreen === Screen.Recording ? 'transparent' : '#ffffff',
+                minHeight: 640,
+              }}
           >
-            {renderScreen()}
+            <CameraView
+                ref={cameraRef}
+                style={StyleSheet.absoluteFill}
+                active={activeScreen === Screen.Home || activeScreen === Screen.Recording}
+                mode="video"
+                facing={facing}
+                videoQuality="1080p"
+                mute={false}
+                onCameraReady={() => {
+                  setIsCameraReady(true);
+                  updatePauseSupport();
+                }}
+                onMountError={({ message }) => {
+                  const details = message ?? 'Unable to access the camera.';
+                  console.error('Camera mount error:', details);
+                  Alert.alert('Camera error', details);
+                }}
+            />
+            <StyledView
+                className="relative"
+                style={[
+                  {
+                    zIndex: 10,
+                    backgroundColor: activeScreen === Screen.Recording ? 'transparent' : 'white',
+                  },
+                  activeScreen === Screen.Recording && { flex: 1 },
+                ]}
+            >
+              {activeScreen === Screen.Preview && cornerDrawing?.points?.length ? (
+                  <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+                    <Svg width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+                      {(() => {
+
+                        const W = 390;
+                        const H = 640;
+                        const { toFit, fittedPts } = fitToView(cornerDrawing.points, W, H, 24);
+
+                        (cornerDrawing.zones ?? []).forEach(z => {
+                          if (!z.points?.length) return;
+                          const zPts = z.points.map(toFit);
+
+                          return (
+                              <Polygon
+                                  key={`zone-${z.id}`}
+                                  points={zPts.map(p => `${p.x},${p.y}`).join(' ')}
+                                  strokeWidth={1}
+                                  strokeOpacity={0.5}
+                                  fillOpacity={0.14}
+                              />
+                          );
+                        });
+
+                        if (cornerDrawing.closed) {
+
+                          return (
+                              <>
+                                <Polygon
+                                    points={fittedPts.map(p => `${p.x},${p.y}`).join(' ')}
+                                    strokeWidth={2}
+                                    strokeOpacity={0.9}
+                                    fillOpacity={0.12}
+                                />
+                                {fittedPts.map((p, i) => (
+                                    <G key={`corner-${i}`}>
+                                      <Circle cx={p.x} cy={p.y} r={3} />
+                                    </G>
+                                ))}
+                                {}
+                                {(cornerDrawing.annotations ?? []).map(a => {
+                                  const p = toFit({ x: a.x, y: a.y });
+                                  return (
+                                      <G key={a.id} x={p.x} y={p.y}>
+                                        {getAnnotationIcon(a.type, 16)}
+                                      </G>
+                                  );
+                                })}
+                              </>
+                          );
+                        } else {
+
+                          return (
+                              <>
+                                <Polyline
+                                    points={fittedPts.map(p => `${p.x},${p.y}`).join(' ')}
+                                    strokeWidth={2}
+                                    strokeOpacity={0.9}
+                                    fill="none"
+                                />
+                                {fittedPts.map((p, i) => (
+                                    <G key={`corner-${i}`}>
+                                      <Circle cx={p.x} cy={p.y} r={3} />
+                                    </G>
+                                ))}
+                                {(cornerDrawing.annotations ?? []).map(a => {
+                                  const p = toFit({ x: a.x, y: a.y });
+                                  return (
+                                      <G key={a.id} x={p.x} y={p.y}>
+                                        {getAnnotationIcon(a.type, 16)}
+                                      </G>
+                                  );
+                                })}
+                              </>
+                          );
+                        }
+                      })()}
+                    </Svg>
+                  </View>
+              ) : null}
+              {renderScreen()}
+            </StyledView>
           </StyledView>
         </StyledView>
-      </StyledView>
-    </StyledSafeAreaView>
+      </StyledSafeAreaView>
   );
 }
