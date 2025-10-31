@@ -23,7 +23,7 @@ GartenOSMobile_2.0/
 │  ├─ CertScreen.tsx       # Mock certification checklist (placeholder)
 │  └─ SubmittedScreen.tsx  # Confirmation screen with reset button
 ├─ services/
-│  └─ geminiService.ts     # Gemini 2.5 Flash transcription helper with mock fallback
+│  └─ geminiService.ts     # Gemini 2.5 Flash transcription helper
 ├─ assets/                 # Icons, splash imagery
 ├─ app.json                # Expo configuration
 └─ package.json            # Dependency manifest (Expo SDK 54 + React 19)
@@ -54,6 +54,23 @@ GartenOSMobile_2.0/
 4. **Export** – “Export garden JSON” triggers `handleExportGarden()`, writes the JSON to `FileSystem.documentDirectory`, and opens share sheet via `expo-sharing` when available.
 5. **Measurement & certification** – Present but static; real data wiring TBD.
 
+### 3.1 Transcription pipeline
+
+| Build | Approach | Result |
+| --- | --- | --- |
+| v1 | Inline base64 payload passed to Gemini. | Short clips succeeded, but long recordings blew past JS/Java heap limits ("String length exceeds limit"). |
+| v2 | Swapped to @google/genai client's files.upload helper. | SDK still buffered files and raised CrossUploader errors on native devices. |
+| v2 | Swapped to `@google/genai` client's `files.upload` helper. | SDK still buffered files and raised CrossUploader errors on native devices. |
+
+The preview screen now walks through the same phases (Preparing -> Uploading -> Processing media on Gemini -> Transcribing). Export actions stay disabled until the transcript lands.
+
+To verify File API access before testing, run:
+
+```bash
+python verify_gemini_file_api.py
+```
+
+The script performs a small upload/generation cycle and cleans up afterward. It requires `google-genai` and reads the API key from `INLINE_API_KEY` or the `GEMINI_API_KEY` / `EXPO_PUBLIC_GEMINI_API_KEY` / `GOOGLE_API_KEY` environment variables.
 ---
 
 ## 4. Working vs Placeholder
@@ -103,8 +120,10 @@ Helpful flags:
 | --- | --- | --- |
 | Missing native modules (e.g., `expo-location`) | Install skipped due to peer conflicts. | Re-run `expo install ... -- --legacy-peer-deps`. |
 | npm peer dependency errors | React 19 vs Expo SDK 54 mismatch. | Keep `legacy-peer-deps` enabled or downgrade to React 18.3. |
-| Transcript stays mock | No Gemini key or network failure. | Provide API key or retry with connectivity. |
+| Transcript stays mock | No Gemini key or network failure. | Provide `EXPO_PUBLIC_GEMINI_API_KEY` or retry with connectivity. |
 | Pause button disabled | Device lacks support for `toggleRecordingAsync`. | Use a physical device that supports pause. |
+| Stuck on "Processing media on Gemini..." | Upload finished but Gemini has not activated the file yet. | Wait up to ~30 seconds; the app polls until the file reports `ACTIVE`. |
+| Transcription fails with "File ... is not in an ACTIVE state" | Polling was interrupted before the file activated. | Re-open the preview to trigger a fresh upload and poll cycle. |
 | Corner capture fails indoors | GPS precision too low. | Move outdoors or enable high-accuracy mode in OS settings. |
 
 ---

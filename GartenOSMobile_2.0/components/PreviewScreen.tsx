@@ -7,6 +7,7 @@ import { Screen } from '../types';
 import { TrackMap, TrackPoint } from './TrackMap';
 import { CornersMap, useCornerExportData, CornerExportData } from './CornersMap';
 import { Corner, CornerMetrics } from '../app/utils/geo';
+import { TranscriptionStatus } from '../services/geminiService.ts';
 
 const StyledView = styled(View);
 const StyledText = styled(Text);
@@ -16,6 +17,7 @@ interface PreviewScreenProps {
   videoUri: string | null;
   transcript: string;
   isProcessing: boolean;
+  transcriptionStatus: TranscriptionStatus | null;
   onNavigate: (screen: Screen) => void;
   onRetake: () => void;
   onDownload?: () => void;
@@ -33,6 +35,7 @@ const PreviewScreen: React.FC<PreviewScreenProps> = ({
   videoUri,
   transcript,
   isProcessing,
+  transcriptionStatus,
   onNavigate,
   onRetake,
   onDownload,
@@ -54,6 +57,28 @@ const PreviewScreen: React.FC<PreviewScreenProps> = ({
     const seconds = Math.floor(durationSeconds % 60);
     return `${minutes}:${String(seconds).padStart(2, '0')}`;
   }, [durationSeconds]);
+  const statusMessage = React.useMemo(() => {
+    if (!isProcessing || !transcriptionStatus) {
+      return 'Preparing transcript...';
+    }
+    if (transcriptionStatus.message) {
+      return transcriptionStatus.message;
+    }
+    switch (transcriptionStatus.stage) {
+      case 'preparing':
+        return 'Preparing media for transcription...';
+      case 'uploading':
+        return transcriptionStatus.progress && transcriptionStatus.progress > 0
+          ? `Uploading media (${Math.round(transcriptionStatus.progress * 100)}%)...`
+          : 'Uploading media...';
+      case 'transcribing':
+        return transcriptionStatus.progress && transcriptionStatus.progress > 0
+          ? `Transcribing audio (${Math.round(transcriptionStatus.progress * 100)}%)...`
+          : 'Transcribing audio with Gemini...';
+      default:
+        return 'Processing transcription...';
+    }
+  }, [isProcessing, transcriptionStatus]);
 
   return (
     <ScrollView>
@@ -138,8 +163,8 @@ const PreviewScreen: React.FC<PreviewScreenProps> = ({
           onPress={() => onExport(exportData ?? null)}
           className="bg-green-600 px-4 py-3 rounded-lg w-full mt-3"
           activeOpacity={0.7}
-          disabled={!exportReady || isExporting}
-          style={{ opacity: !exportReady || isExporting ? 0.6 : 1 }}
+          disabled={!exportReady || isExporting || isProcessing}
+          style={{ opacity: !exportReady || isExporting || isProcessing ? 0.6 : 1 }}
         >
           <StyledText className="text-white text-base font-semibold text-center">
             {isExporting ? 'Exporting…' : 'Export garden JSON'}
@@ -155,7 +180,7 @@ const PreviewScreen: React.FC<PreviewScreenProps> = ({
           {isProcessing ? (
             <StyledView className="flex-row items-center">
               <ActivityIndicator color="#166534" />
-              <StyledText className="text-gray-500 ml-2">{transcript}</StyledText>
+              <StyledText className="text-gray-500 ml-2">{statusMessage}</StyledText>
             </StyledView>
           ) : (
             <StyledText>{transcript}</StyledText>

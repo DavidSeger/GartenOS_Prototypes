@@ -9,7 +9,11 @@ import * as Sharing from 'expo-sharing';
 import { styled } from 'nativewind';
 
 import { Screen } from '../../types.ts';
-import { transcribeAudio } from '../../services/geminiService.ts';
+import {
+  prepareMediaForTranscription,
+  transcribeMediaViaFileApi,
+  TranscriptionStatus,
+} from '../../services/geminiService.ts';
 import { averageCorner, Corner, toMetersProjector, useMetrics } from '../utils/geo.ts';
 
 import HomeScreen from '../../components/HomeScreen.tsx';
@@ -29,18 +33,6 @@ const DEFAULT_TRANSCRIPT_MESSAGE =
 type CameraViewInstance = React.ComponentRef<typeof CameraView>;
 type TrackPoint = { latitude: number; longitude: number; timestamp: number };
 
-const blobToBase64 = (blob: Blob): Promise<string> =>
-    new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const dataUrl = reader.result as string;
-        const base64 = dataUrl.split(',')[1];
-        resolve(base64);
-      };
-      reader.onerror = () => reject(reader.error);
-      reader.readAsDataURL(blob);
-    });
-
 export default function App() {
   const [activeScreen, setActiveScreen] = useState<Screen>(Screen.Home);
   const [videoUri, setVideoUri] = useState<string | null>(null);
@@ -58,6 +50,7 @@ export default function App() {
   const [corners, setCorners] = useState<Corner[]>([]);
   const [isAveragingCorner, setIsAveragingCorner] = useState<boolean>(false);
   const [isExporting, setIsExporting] = useState<boolean>(false);
+  const [transcriptionStatus, setTranscriptionStatus] = useState<TranscriptionStatus | null>(null);
 
   type XY = { x: number; y: number };
   type Annotation = { id: string; type: 'tree' | 'water' | string; x: number; y: number };
@@ -469,23 +462,32 @@ export default function App() {
   const processTranscription = useCallback(
       async (uri: string) => {
         setIsProcessing(true);
-        setTranscript('Converting video to audio format...');
+        setTranscriptionStatus({
+          stage: 'preparing',
+          progress: 0,
+          message: 'Preparing media for transcription...',
+        });
+        setTranscript('Preparing media for transcription...');
+
+        let cleanupTask: (() => Promise<void>) | undefined;
 
         try {
-          let base64 = '';
-          let mimeType: 'audio/wav' | 'video/mp4' = 'video/mp4';
+          const prepared = await prepareMediaForTranscription(uri);
+          cleanupTask = prepared.cleanup;
 
-          if (Platform.OS === 'web') {
-            const response = await fetch(uri);
-            const blob = await response.blob();
-            mimeType = (blob.type as 'video/mp4') || 'video/mp4';
-            base64 = await blobToBase64(blob);
-          } else {
-            base64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
-          }
+          const result = await transcribeMediaViaFileApi({
+            fileUri: prepared.uri,
+            mimeType: prepared.mimeType,
+            onStatus: (status) => {
+              setTranscriptionStatus(status);
+              if (status.stage === 'uploading') {
+                setTranscript('Uploading walkthrough for transcription...');
+              } else if (status.stage === 'transcribing') {
+                setTranscript('Transcribing audio with Gemini... Please wait.');
+              }
+            },
+          });
 
-          setTranscript('Transcribing audio with Gemini... Please wait.');
-          const result = await transcribeAudio(base64, mimeType);
           setTranscript(result);
         } catch (error) {
           console.error('Error during transcription process:', error);
@@ -493,12 +495,21 @@ export default function App() {
               error instanceof Error
                   ? error.message
                   : 'An unknown error occurred during transcription.';
+          setTranscriptionStatus(null);
           setTranscript(message);
         } finally {
           setIsProcessing(false);
+          setTranscriptionStatus(null);
+          if (cleanupTask) {
+            try {
+              await cleanupTask();
+            } catch (cleanupError) {
+              console.warn('Failed to clean up temporary transcription media', cleanupError);
+            }
+          }
         }
       },
-      [],
+      [prepareMediaForTranscription, transcribeMediaViaFileApi],
   );
 
   useEffect(() => {
@@ -594,6 +605,7 @@ export default function App() {
                 videoUri={videoUri}
                 transcript={transcript}
                 isProcessing={isProcessing}
+                transcriptionStatus={transcriptionStatus}
                 onNavigate={setActiveScreen}
                 onRetake={retakeRecording}
                 onDownload={Platform.OS === 'web' ? downloadRecording : undefined}
