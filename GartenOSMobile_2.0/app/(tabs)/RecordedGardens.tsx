@@ -29,10 +29,61 @@ type GardenJson = {
     zones?: Zone[];
     _meta?: { ts?: number; app?: string };
     _metrics?: { perimeter_m?: number; area_m2?: number };
+    transcript?: string;
+    videoUri?: string;
 };
+
 
 const VIEW_W = 360;
 const VIEW_H = 360;
+
+function normalizeGardenJson(raw: any): GardenJson {
+    // Old shape already matches
+    if (raw && Array.isArray(raw.points)) {
+        const gj: GardenJson = raw;
+        // if someone provided `metrics` on old files, surface them
+        if (!gj._metrics && raw.metrics) {
+            gj._metrics = {
+                perimeter_m: raw.metrics.perimeter_m,
+                area_m2: raw.metrics.area_m2,
+            };
+        }
+        if (!gj._meta && (raw._meta || raw.exportedAt || raw.version)) {
+            gj._meta = raw._meta ?? {
+                ts: typeof raw.exportedAt === 'number' ? raw.exportedAt : undefined,
+                app: raw.version != null ? `garden-mapper-v${raw.version}` : undefined,
+            };
+        }
+        return gj;
+    }
+
+    // New shape (your example)
+    const cd = raw?.cornerDrawing;
+    if (cd && Array.isArray(cd.points)) {
+        const gj: GardenJson = {
+            points: cd.points,                 // <- main change
+            closed: !!cd.closed,
+            scale: typeof cd.scale === 'number' ? cd.scale : undefined,
+            // carry over extras if you want them around
+            transcript: typeof raw.transcript === 'string' ? raw.transcript : undefined,
+            videoUri: typeof raw.videoUri === 'string' ? raw.videoUri : undefined,
+            _metrics: raw?.metrics
+                ? {
+                    perimeter_m: raw.metrics.perimeter_m,
+                    area_m2: raw.metrics.area_m2,
+                }
+                : undefined,
+            _meta: {
+                ts: typeof raw.exportedAt === 'number' ? raw.exportedAt : undefined,
+                app: raw.version != null ? `garden-mapper-v${raw.version}` : undefined,
+            },
+        };
+        return gj;
+    }
+
+    throw new Error('Unrecognized garden JSON format: expected `points` or `cornerDrawing.points`.');
+}
+
 
 export default function Index() {
     const [data, setData] = useState<GardenJson | null>(null);
@@ -51,12 +102,14 @@ export default function Index() {
 
             // @ts-ignore
             const file = new File(result.assets[0]);
-            const json = JSON.parse(file.textSync()) as GardenJson;
+            const parsed = JSON.parse(file.textSync());
+            const normalized = normalizeGardenJson(parsed);
 
-            if (!json || !Array.isArray(json.points) || json.points.length < 2) {
-                throw new Error('Invalid file: expected { points: [{x,y}, ...] }.');
+            if (!normalized || !Array.isArray(normalized.points) || normalized.points.length < 2) {
+                throw new Error('Invalid file: expected at least two points.');
             }
-            setData(json);
+
+            setData(normalized);
         } catch (e: any) {
             console.error(e);
             setData(null);

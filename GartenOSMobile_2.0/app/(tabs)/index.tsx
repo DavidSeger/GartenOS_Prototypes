@@ -149,13 +149,11 @@ export default function App() {
       const sub = await Location.watchPositionAsync(
           {
             accuracy: Location.Accuracy.BestForNavigation,
-            timeInterval: 1000,
-            distanceInterval: 1,
             mayShowUserSettingsDialog: true,
           },
           (pos) => {
             const acc = pos.coords.accuracy ?? 99;
-            if (acc > 8) return;
+            if (acc > 0.5) return;
             const tp: TrackPoint = {
               latitude: pos.coords.latitude,
               longitude: pos.coords.longitude,
@@ -183,7 +181,7 @@ export default function App() {
     if (isAveragingCorner) return;
     setIsAveragingCorner(true);
     try {
-      const corner = await averageCorner(20);
+      const corner = await averageCorner(15);
       if (!corner) {
         Alert.alert(
             'No reliable GPS fix',
