@@ -202,17 +202,19 @@
 
   // ----- State -----
   const state = {
-    mode: 'idle', // idle | drawing | closed | drawingZone
-    points: [],   // main polygon [{x,y}]
+    mode: 'idle',
+    points: [],
     closed: false,
-    scale: null,  // units per pixel (e.g., meters/pixel)
+    scale: null,
     unit: 'm',
-    calibratedEdgeIndex: null, // edge i -> (i to i+1)
+    calibratedEdgeIndex: null,
     surface: 'grass',
-    annotations: [], // {id,type:'tree'|'water', x,y}
-    zones: [], // {id,type,points:[{x,y}]}
-    zoneDraft: []
+    annotations: [],
+    zones: [],
+    zoneDraft: [],
+    metricsWorld: null
   }
+
 
   function setMode(m){ state.mode = m; modeEl.textContent = m }
 
@@ -261,6 +263,55 @@
       draw();
     }
   });
+
+  function normalizeGardenJson(raw) {
+    // Already the legacy viewer shape?
+    if (raw && Array.isArray(raw.points)) {
+      return {
+        points: raw.points,
+        closed: !!raw.closed,
+        surface: raw.surface || 'grass',
+        scale: typeof raw.scale === 'number' ? raw.scale : null,
+        unit: raw.unit || 'm',
+        calibratedEdgeIndex: raw.calibratedEdgeIndex ?? null,
+        annotations: Array.isArray(raw.annotations) ? raw.annotations : [],
+        zones: Array.isArray(raw.zones) ? raw.zones : [],
+        // optional meta/metrics if present
+        _meta: raw._meta || (raw.exportedAt || raw.version ? {
+          ts: typeof raw.exportedAt === 'number' ? raw.exportedAt : undefined,
+          app: raw.version != null ? `garden-mapper-v${raw.version}` : undefined
+        } : undefined),
+        _metrics: raw._metrics || raw.metrics || undefined
+      };
+    }
+
+    // v1 shape with cornerDrawing
+    const cd = raw?.cornerDrawing;
+    if (cd && Array.isArray(cd.points)) {
+      return {
+        points: cd.points,
+        closed: !!cd.closed,
+        surface: 'grass',                         // default if not provided
+        scale: typeof cd.scale === 'number' ? cd.scale : null, // assume meters/px (how you used it before)
+        unit: 'm',
+        calibratedEdgeIndex: null,
+        annotations: [],                          // v1 didn’t include these → start empty
+        zones: [],
+        _meta: {
+          ts: typeof raw.exportedAt === 'number' ? raw.exportedAt : undefined,
+          app: raw.version != null ? `garden-mapper-v${raw.version}` : 'garden-mapper-v1'
+        },
+        _metrics: raw.metrics ? {
+          perimeter_m: raw.metrics.perimeter_m,
+          area_m2: raw.metrics.area_m2,
+          closed: !!raw.metrics.closed
+        } : undefined
+      };
+    }
+
+    throw new Error('Unrecognized garden JSON. Expected `points[]` or `cornerDrawing.points[]`.');
+  }
+
 
   function draw(){
     // Clear layers
@@ -451,17 +502,27 @@
   }
 
   function updateMetrics(){
-    const pxArea = state.closed? polygonArea(state.points) : 0;
-    const pxPerim = state.closed? perimeter(state.points) : 0;
-    if(state.scale){
-      const areaWorld = pxArea * state.scale * state.scale; // units^2
+    const pxArea = state.closed ? polygonArea(state.points) : 0;
+    const pxPerim = state.closed ? perimeter(state.points) : 0;
+
+    if (state.scale) {
+      const areaWorld = pxArea * state.scale * state.scale;
       const perimWorld = pxPerim * state.scale;
-      areaOut.textContent = fmt(areaWorld,2) + ' ' + unitSq(state.unit);
+      areaOut.textContent  = fmt(areaWorld,2) + ' ' + unitSq(state.unit);
       perimOut.textContent = fmt(perimWorld,2) + ' ' + state.unit;
-    } else {
-      areaOut.textContent = pxArea? fmt(pxArea,1)+' px²' : '—';
-      perimOut.textContent = pxPerim? fmt(pxPerim,1)+' px' : '—';
+      return;
     }
+
+    // NEW: show world metrics if provided by v1 file
+    if (state.metricsWorld && (state.metricsWorld.area_m2 != null || state.metricsWorld.perimeter_m != null)) {
+      areaOut.textContent  = (state.metricsWorld.area_m2 != null) ? fmt(state.metricsWorld.area_m2,2) + ' m²' : '—';
+      perimOut.textContent = (state.metricsWorld.perimeter_m != null) ? fmt(state.metricsWorld.perimeter_m,2) + ' m' : '—';
+      return;
+    }
+
+    // Fallback: pixel metrics
+    areaOut.textContent  = pxArea  ? fmt(pxArea,1)  + ' px²' : '—';
+    perimOut.textContent = pxPerim ? fmt(pxPerim,1) + ' px'  : '—';
   }
 
   function unitSq(u){ return u==='m'?'m²':'ft²' }
@@ -491,20 +552,38 @@
 
   fileInput.addEventListener('change', (e)=>{
     const file = e.target.files[0]; if(!file) return;
-    const reader = new FileReader(); reader.onload = ()=>{
-      try{
-        const data = JSON.parse(reader.result);
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      try {
+        const raw = JSON.parse(reader.result);
+        const data = normalizeGardenJson(raw);
+
         Object.assign(state, {
-          points: data.points||[], closed: !!data.closed,
-          surface: data.surface||'grass', scale: data.scale||null,
-          unit: data.unit||'m', calibratedEdgeIndex: data.calibratedEdgeIndex??null,
-          annotations: data.annotations||[], zones: data.zones||[], zoneDraft: []
+          points: data.points || [],
+          closed: !!data.closed,
+          surface: data.surface || 'grass',
+          scale: (typeof data.scale === 'number') ? data.scale : null,
+          unit: data.unit || 'm',
+          calibratedEdgeIndex: data.calibratedEdgeIndex ?? null,
+          annotations: Array.isArray(data.annotations) ? data.annotations : [],
+          zones: Array.isArray(data.zones) ? data.zones : [],
+          zoneDraft: [],
+          metricsWorld: (data._metrics && (typeof data._metrics.area_m2 === 'number' || typeof data._metrics.perimeter_m === 'number'))
+                  ? { area_m2: data._metrics.area_m2 ?? null, perimeter_m: data._metrics.perimeter_m ?? null }
+                  : null
         });
-        unitSelect.value = state.unit; scaleVal.textContent = state.scale? `${fmt(state.scale,4)} ${state.unit}/px` : '—';
+
+        unitSelect.value = state.unit;
+        scaleVal.textContent = state.scale ? `${fmt(state.scale,4)} ${state.unit}/px` : '—';
         draw();
-      }catch(err){ alert('Invalid file.'); }
-    }; reader.readAsText(file);
+      } catch(err) {
+        console.error(err);
+        alert('Invalid file.');
+      }
+    };
+    reader.readAsText(file);
   })
+
 
   // Initial
   draw();
