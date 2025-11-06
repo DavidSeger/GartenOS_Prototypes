@@ -88,12 +88,28 @@ export async function ensureLocationReady(): Promise<void> {
   }
 }
 
+function makeLocalProjector(lat0: number, lon0: number) {
+  // rough meters/deg at that latitude
+  const mPerDegLat = 111132; // good enough here
+  const mPerDegLon = 111320 * Math.cos((lat0 * Math.PI) / 180);
+  return {
+    toXY(lat: number, lon: number) {
+      return {
+        x: (lon - lon0) * mPerDegLon,
+        y: (lat - lat0) * mPerDegLat,
+      };
+    },
+    toLatLon(x: number, y: number) {
+      return {
+        latitude: lat0 + y / mPerDegLat,
+        longitude: lon0 + x / mPerDegLon,
+      };
+    },
+  };
+}
+
 export async function averageCorner(seconds = 10): Promise<Corner | null> {
-  try {
-    await ensureLocationReady();
-  } catch (error) {
-    throw error instanceof Error ? error : new Error(String(error));
-  }
+  await ensureLocationReady();
 
   const samples: { lat: number; lon: number; acc: number }[] = [];
   const t0 = Date.now();
@@ -101,48 +117,68 @@ export async function averageCorner(seconds = 10): Promise<Corner | null> {
 
   try {
     sub = await Location.watchPositionAsync(
-      {
-        accuracy: Location.Accuracy.BestForNavigation,
-        timeInterval: 500,
-        distanceInterval: 0,
-        mayShowUserSettingsDialog: true,
-      },
-      (pos) => {
-        const acc = pos.coords.accuracy ?? 9999;
-        const { latitude: lat, longitude: lon } = pos.coords;
-        if (Number.isFinite(lat) && Number.isFinite(lon) && acc <= 20) {
-          samples.push({ lat, lon, acc });
+        {
+          accuracy: Location.Accuracy.BestForNavigation,
+          timeInterval: 100,
+          distanceInterval: 0,
+          mayShowUserSettingsDialog: true,
+        },
+        (pos) => {
+          const acc = pos.coords.accuracy ?? 9999;
+          const { latitude: lat, longitude: lon } = pos.coords;
+
+          // keep only decent fixes
+          if (Number.isFinite(lat) && Number.isFinite(lon) && acc <= 5) {
+            samples.push({ lat, lon, acc });
+          }
+
+          // stop collecting when time is up
+          if (Date.now() - t0 >= seconds * 1000) {
+            sub?.remove();
+            sub = null;
+          }
         }
-        if (Date.now() - t0 >= seconds * 1000) {
-          sub?.remove();
-          sub = null;
-        }
-      },
     );
 
+    // wait until time is up
     while (Date.now() - t0 < seconds * 1000) {
       // eslint-disable-next-line no-await-in-loop
       await new Promise((resolve) => setTimeout(resolve, 200));
     }
   } finally {
+    // make sure it’s really stopped
     sub?.remove();
   }
 
-  if (!samples.length) return null;
+  // not enough good data
+  if (samples.length < 3) return null;
+
+  // use first sample as local origin
+  const origin = samples[0];
+  const proj = makeLocalProjector(origin.lat, origin.lon);
 
   let wSum = 0;
-  let latSum = 0;
-  let lonSum = 0;
+  let xSum = 0;
+  let ySum = 0;
+
   for (const s of samples) {
-    const sigma = Math.max(1, s.acc);
+    const sigma = Math.max(1, s.acc); // avoid div by 0
     const w = 1 / (sigma * sigma);
+    const { x, y } = proj.toXY(s.lat, s.lon);
     wSum += w;
-    latSum += w * s.lat;
-    lonSum += w * s.lon;
+    xSum += w * x;
+    ySum += w * y;
   }
-  const lat = latSum / wSum;
-  const lon = lonSum / wSum;
-  return { latitude: lat, longitude: lon, timestamp: Date.now() };
+
+  const xAvg = xSum / wSum;
+  const yAvg = ySum / wSum;
+  const { latitude, longitude } = proj.toLatLon(xAvg, yAvg);
+
+  return {
+    latitude,
+    longitude,
+    timestamp: Date.now(),
+  };
 }
 
 export function useMetrics(corners: Corner[]) {

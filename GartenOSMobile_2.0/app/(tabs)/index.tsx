@@ -50,6 +50,7 @@ export default function App() {
   const [corners, setCorners] = useState<Corner[]>([]);
   const [isAveragingCorner, setIsAveragingCorner] = useState<boolean>(false);
   const [isExporting, setIsExporting] = useState<boolean>(false);
+  const [svgSize, setSvgSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
   const [transcriptionStatus, setTranscriptionStatus] = useState<TranscriptionStatus | null>(null);
 
   type XY = { x: number; y: number };
@@ -674,84 +675,90 @@ export default function App() {
                 ]}
             >
               {activeScreen === Screen.Preview && cornerDrawing?.points?.length ? (
-                  <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-                    <Svg width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
-                      {(() => {
+                  <View
+                      pointerEvents="none"
+                      style={StyleSheet.absoluteFill}
+                      onLayout={e => {
+                        const { width, height } = e.nativeEvent.layout;
+                        setSvgSize({ width, height });
+                      }}
+                  >
+                    {svgSize.width > 0 && svgSize.height > 0 && (
+                        <Svg width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+                          {(() => {
+                            const W = svgSize.width;
+                            const H = svgSize.height;
+                            const { toFit, fittedPts } = fitToView(cornerDrawing.points, W, H, 24);
 
-                        const W = 390;
-                        const H = 640;
-                        const { toFit, fittedPts } = fitToView(cornerDrawing.points, W, H, 24);
+                            // zones first
+                            {(cornerDrawing.zones ?? []).map(z => {
+                              if (!z.points?.length) return null;
+                              const zPts = z.points.map(toFit);
+                              return (
+                                  <Polygon
+                                      key={`zone-${z.id}`}
+                                      points={zPts.map(p => `${p.x},${p.y}`).join(' ')}
+                                      stroke={zoneStrokeColor(z.type)}
+                                      fill={zoneFillColor(z.type)}
+                                      strokeWidth={1}
+                                      strokeOpacity={0.85}
+                                      fillOpacity={0.28}
+                                  />
+                              );
+                            })}
 
-                        {(cornerDrawing.zones ?? []).map(z => {
-                          if (!z.points?.length) return null;
-                          const zPts = z.points.map(toFit);
-                          return (
-                              <Polygon
-                                  key={`zone-${z.id}`}
-                                  points={zPts.map(p => `${p.x},${p.y}`).join(' ')}
-                                  stroke={zoneStrokeColor(z.type)}
-                                  fill={zoneFillColor(z.type)}
-                                  strokeWidth={1}
-                                  strokeOpacity={0.85}
-                                  fillOpacity={0.28}
-                              />
-                          );
-                        })}
-
-                        if (cornerDrawing.closed) {
-
-                          return (
-                              <>
-                                <Polygon
-                                    points={fittedPts.map(p => `${p.x},${p.y}`).join(' ')}
-                                    strokeWidth={2}
-                                    strokeOpacity={0.9}
-                                    fillOpacity={0.12}
-                                />
-                                {fittedPts.map((p, i) => (
-                                    <G key={`corner-${i}`}>
-                                      <Circle cx={p.x} cy={p.y} r={3} />
-                                    </G>
-                                ))}
-                                {}
-                                {(cornerDrawing.annotations ?? []).map(a => {
-                                  const p = toFit({ x: a.x, y: a.y });
-                                  return (
-                                      <G key={a.id} x={p.x} y={p.y}>
-                                        {getAnnotationIcon(a.type, 16)}
-                                      </G>
-                                  );
-                                })}
-                              </>
-                          );
-                        } else {
-
-                          return (
-                              <>
-                                <Polyline
-                                    points={fittedPts.map(p => `${p.x},${p.y}`).join(' ')}
-                                    strokeWidth={2}
-                                    strokeOpacity={0.9}
-                                    fill="none"
-                                />
-                                {fittedPts.map((p, i) => (
-                                    <G key={`corner-${i}`}>
-                                      <Circle cx={p.x} cy={p.y} r={3} />
-                                    </G>
-                                ))}
-                                {(cornerDrawing.annotations ?? []).map(a => {
-                                  const p = toFit({ x: a.x, y: a.y });
-                                  return (
-                                      <G key={a.id} x={p.x} y={p.y}>
-                                        {getAnnotationIcon(a.type, 16)}
-                                      </G>
-                                  );
-                                })}
-                              </>
-                          );
-                        }
-                      })()}
-                    </Svg>
+                            if (cornerDrawing.closed) {
+                              return (
+                                  <>
+                                    <Polygon
+                                        points={fittedPts.map(p => `${p.x},${p.y}`).join(' ')}
+                                        strokeWidth={2}
+                                        strokeOpacity={0.9}
+                                        fillOpacity={0.12}
+                                    />
+                                    {fittedPts.map((p, i) => (
+                                        <G key={`corner-${i}`}>
+                                          <Circle cx={p.x} cy={p.y} r={3} />
+                                        </G>
+                                    ))}
+                                    {(cornerDrawing.annotations ?? []).map(a => {
+                                      const p = toFit({ x: a.x, y: a.y });
+                                      return (
+                                          <G key={a.id} x={p.x} y={p.y}>
+                                            {getAnnotationIcon(a.type, 16)}
+                                          </G>
+                                      );
+                                    })}
+                                  </>
+                              );
+                            } else {
+                              return (
+                                  <>
+                                    <Polyline
+                                        points={fittedPts.map(p => `${p.x},${p.y}`).join(' ')}
+                                        strokeWidth={2}
+                                        strokeOpacity={0.9}
+                                        fill="none"
+                                    />
+                                    {fittedPts.map((p, i) => (
+                                        <G key={`corner-${i}`}>
+                                          <Circle cx={p.x} cy={p.y} r={3} />
+                                        </G>
+                                    ))}
+                                    {(cornerDrawing.annotations ?? []).map(a => {
+                                      const p = toFit({ x: a.x, y: a.y });
+                                      return (
+                                          <G key={a.id} x={p.x} y={p.y}>
+                                            {getAnnotationIcon(a.type, 16)}
+                                          </G>
+                                      );
+                                    })}
+                                  </>
+                              );
+                            }
+                          })()}
+                        </Svg>
+                    )}
                   </View>
               ) : null}
               {renderScreen()}
