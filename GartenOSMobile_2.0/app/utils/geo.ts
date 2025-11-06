@@ -118,8 +118,6 @@ export async function averageCorner(seconds = 10): Promise<Corner | null> {
     sub = await Location.watchPositionAsync(
         {
           accuracy: Location.Accuracy.BestForNavigation,
-          timeInterval: 100,
-          distanceInterval: 0,
           mayShowUserSettingsDialog: true,
         },
         (pos) => {
