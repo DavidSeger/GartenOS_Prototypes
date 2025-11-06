@@ -22,7 +22,6 @@ export function toMetersProjector(lat0: number, lon0: number) {
   };
 }
 
-/** Douglas–Peucker simplify to drop duplicate/near points in meters */
 export function simplifyXY(points: XY[], eps = 0.03): XY[] {
   if (points.length <= 2) return points;
   const lineDist = (p: XY, a: XY, b: XY) => {
@@ -89,8 +88,8 @@ export async function ensureLocationReady(): Promise<void> {
 }
 
 function makeLocalProjector(lat0: number, lon0: number) {
-  // rough meters/deg at that latitude
-  const mPerDegLat = 111132; // good enough here
+
+  const mPerDegLat = 111132;
   const mPerDegLon = 111320 * Math.cos((lat0 * Math.PI) / 180);
   return {
     toXY(lat: number, lon: number) {
@@ -127,12 +126,10 @@ export async function averageCorner(seconds = 10): Promise<Corner | null> {
           const acc = pos.coords.accuracy ?? 9999;
           const { latitude: lat, longitude: lon } = pos.coords;
 
-          // keep only decent fixes
           if (Number.isFinite(lat) && Number.isFinite(lon) && acc <= 5) {
             samples.push({ lat, lon, acc });
           }
 
-          // stop collecting when time is up
           if (Date.now() - t0 >= seconds * 1000) {
             sub?.remove();
             sub = null;
@@ -140,20 +137,17 @@ export async function averageCorner(seconds = 10): Promise<Corner | null> {
         }
     );
 
-    // wait until time is up
     while (Date.now() - t0 < seconds * 1000) {
-      // eslint-disable-next-line no-await-in-loop
+
       await new Promise((resolve) => setTimeout(resolve, 200));
     }
   } finally {
-    // make sure it’s really stopped
+
     sub?.remove();
   }
 
-  // not enough good data
   if (samples.length < 3) return null;
 
-  // use first sample as local origin
   const origin = samples[0];
   const proj = makeLocalProjector(origin.lat, origin.lon);
 
@@ -162,7 +156,7 @@ export async function averageCorner(seconds = 10): Promise<Corner | null> {
   let ySum = 0;
 
   for (const s of samples) {
-    const sigma = Math.max(1, s.acc); // avoid div by 0
+    const sigma = Math.max(1, s.acc);
     const w = 1 / (sigma * sigma);
     const { x, y } = proj.toXY(s.lat, s.lon);
     wSum += w;
@@ -189,8 +183,8 @@ export function useMetrics(corners: Corner[]) {
     const proj = toMetersProjector(lat0, lon0);
     const rawXY: XY[] = corners.map((c) => proj.toXY(c.latitude, c.longitude));
     const closed =
-      rawXY.length > 2 &&
-      Math.hypot(rawXY[0].x - rawXY[rawXY.length - 1].x, rawXY[0].y - rawXY[rawXY.length - 1].y) < 0.05;
+        rawXY.length > 2 &&
+        Math.hypot(rawXY[0].x - rawXY[rawXY.length - 1].x, rawXY[0].y - rawXY[rawXY.length - 1].y) < 0.05;
     const pts = closed ? rawXY.slice(0, -1) : rawXY;
     const simp = simplifyXY(pts, 0.02);
     const perim = edgeLengthsMeters(simp).reduce((a, b) => a + b, 0);
