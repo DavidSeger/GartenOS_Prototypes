@@ -11,8 +11,9 @@ import { styled } from 'nativewind';
 import { Screen } from '../../types.ts';
 import {
   prepareMediaForTranscription,
-  transcribeMediaViaFileApi,
+  transcribeMediaViaFileApiTimestamped,
   TranscriptionStatus,
+  TranscriptSegment,
 } from '../../services/geminiService.ts';
 import { averageCorner, Corner, toMetersProjector, useMetrics } from '../utils/geo.ts';
 
@@ -52,6 +53,7 @@ export default function App() {
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [svgSize, setSvgSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
   const [transcriptionStatus, setTranscriptionStatus] = useState<TranscriptionStatus | null>(null);
+  const [transcriptSegments, setTranscriptSegments] = useState<TranscriptSegment[]>([]);
 
   type XY = { x: number; y: number };
   type Annotation = { id: string; type: 'tree' | 'water' | string; x: number; y: number };
@@ -298,6 +300,7 @@ export default function App() {
     updatePauseSupport();
     setIsPaused(false);
     setTranscript(DEFAULT_TRANSCRIPT_MESSAGE);
+    setTranscriptSegments([]);
     setRecordingSeconds(0);
     setCorners([]);
 
@@ -353,6 +356,7 @@ export default function App() {
       setShouldAutoRestart(false);
       setVideoUri(null);
       setTranscript(DEFAULT_TRANSCRIPT_MESSAGE);
+      setTranscriptSegments([]);
       setIsPaused(false);
       startRecording();
     }
@@ -393,6 +397,7 @@ export default function App() {
     await deleteFileIfExists(videoUri);
     setVideoUri(null);
     setTranscript(DEFAULT_TRANSCRIPT_MESSAGE);
+    setTranscriptSegments([]);
     setIsProcessing(false);
     setRecordingSeconds(0);
     stopTimer();
@@ -467,6 +472,7 @@ export default function App() {
           message: 'Preparing media for transcription...',
         });
         setTranscript('Preparing media for transcription...');
+        setTranscriptSegments([]);
 
         let cleanupTask: (() => Promise<void>) | undefined;
 
@@ -474,7 +480,7 @@ export default function App() {
           const prepared = await prepareMediaForTranscription(uri);
           cleanupTask = prepared.cleanup;
 
-          const result = await transcribeMediaViaFileApi({
+          const result = await transcribeMediaViaFileApiTimestamped({
             fileUri: prepared.uri,
             mimeType: prepared.mimeType,
             onStatus: (status) => {
@@ -485,9 +491,11 @@ export default function App() {
                 setTranscript('Transcribing audio with Gemini... Please wait.');
               }
             },
+            targetSegmentSeconds: 12,
           });
 
-          setTranscript(result);
+          setTranscript(result.fullText);
+          setTranscriptSegments(result.segments ?? []);
         } catch (error) {
           console.error('Error during transcription process:', error);
           const message =
@@ -496,6 +504,7 @@ export default function App() {
                   : 'An unknown error occurred during transcription.';
           setTranscriptionStatus(null);
           setTranscript(message);
+          setTranscriptSegments([]);
         } finally {
           setIsProcessing(false);
           setTranscriptionStatus(null);
@@ -508,7 +517,7 @@ export default function App() {
           }
         }
       },
-      [prepareMediaForTranscription, transcribeMediaViaFileApi],
+      [prepareMediaForTranscription, transcribeMediaViaFileApiTimestamped],
   );
 
   useEffect(() => {
@@ -527,6 +536,7 @@ export default function App() {
     setIsPaused(false);
     setVideoUri(null);
     setTranscript(DEFAULT_TRANSCRIPT_MESSAGE);
+    setTranscriptSegments([]);
     setActiveScreen(Screen.Recording);
     setShouldAutoRestart(true);
   }, [deleteFileIfExists, videoUri]);
@@ -603,6 +613,7 @@ export default function App() {
             <PreviewScreen
                 videoUri={videoUri}
                 transcript={transcript}
+                transcriptSegments={transcriptSegments}
                 isProcessing={isProcessing}
                 transcriptionStatus={transcriptionStatus}
                 onNavigate={setActiveScreen}

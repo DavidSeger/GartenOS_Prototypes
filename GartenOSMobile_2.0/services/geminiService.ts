@@ -7,6 +7,10 @@ const UPLOAD_ROOT = "https://generativelanguage.googleapis.com/upload/v1beta";
 const MODEL_NAME = "models/gemini-2.5-flash";
 const MOCK_TRANSCRIPT = "API key is not configured.";
 
+// Timestamped transcript types
+export type TranscriptSegment = { start_s: number; end_s: number; text: string };
+export type TranscriptResult = { fullText: string; segments: TranscriptSegment[] };
+
 export type TranscriptionStage = "preparing" | "uploading" | "transcribing";
 
 export type TranscriptionStatus = {
@@ -94,6 +98,106 @@ function extractTranscript(response: GeminiGenerateResponse): string {
     throw new Error("Gemini returned an empty transcription.");
   }
   return transcript;
+}
+
+type TimestampedTranscriptPayload = {
+  fullText?: unknown;
+  segments?: Array<{ start_s?: unknown; end_s?: unknown; text?: unknown }>;
+};
+
+function toSeconds(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string") {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric)) {
+      return numeric;
+    }
+  }
+  return 0;
+}
+
+function extractTranscriptSegments(response: GeminiGenerateResponse): TranscriptResult {
+  if (response.promptFeedback?.blockReason) {
+    throw new Error(`Gemini blocked the request (${response.promptFeedback.blockReason}).`);
+  }
+  const candidate = response.candidates?.[0];
+  if (!candidate || !candidate.content?.parts?.length) {
+    throw new Error("Gemini returned no transcript candidates.");
+  }
+  const payloadText = candidate.content.parts
+    .map((part) => part.text ?? "")
+    .join("")
+    .trim();
+  if (!payloadText) {
+    throw new Error("Gemini returned an empty transcription.");
+  }
+
+  let parsed: TimestampedTranscriptPayload;
+  try {
+    parsed = JSON.parse(payloadText) as TimestampedTranscriptPayload;
+  } catch (error) {
+    throw new Error(`Gemini returned invalid timestamped transcript JSON: ${(error as Error).message}`);
+  }
+
+  const segments = (parsed.segments ?? [])
+    .map((segment) => {
+      const text = typeof segment.text === "string" ? segment.text.trim() : "";
+      const start = Math.max(0, toSeconds(segment.start_s));
+      const endRaw = toSeconds(segment.end_s);
+      const end = endRaw >= start ? endRaw : start;
+      return { start_s: start, end_s: end, text };
+    })
+    .filter((segment) => segment.text.length > 0)
+    .sort((a, b) => a.start_s - b.start_s);
+
+  const fullTextFromPayload = typeof parsed.fullText === "string" ? parsed.fullText.trim() : "";
+  const fullText = fullTextFromPayload || segments.map((segment) => segment.text).join(" ").trim();
+
+  if (!fullText) {
+    throw new Error("Gemini returned an empty transcription.");
+  }
+
+  return {
+    fullText,
+    segments,
+  };
+}
+
+async function requestTranscriptSegments(
+  parts: Array<Record<string, unknown>>,
+  opts: { targetSegmentSeconds?: number } = {},
+): Promise<TranscriptResult> {
+  const targetSeconds = opts.targetSegmentSeconds && opts.targetSegmentSeconds > 0 ? opts.targetSegmentSeconds : 12;
+  const instruction =
+    `Transcribe this garden walkthrough. Respond with strict JSON using this schema: ` +
+    `{"fullText": string, "segments": [{"start_s": number, "end_s": number, "text": string}]}. ` +
+    `Make segments sequential, non-overlapping, and roughly ${targetSeconds}-second chunks. ` +
+    `start_s and end_s must be seconds from the beginning of the media. Return only JSON.`;
+
+  const response = await geminiRequest(
+    `/${MODEL_NAME}:generateContent`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        contents: [
+          {
+            role: "user",
+            parts: [{ text: instruction }, ...parts],
+          },
+        ],
+        generationConfig: {
+          temperature: 0.2,
+          responseMimeType: "application/json",
+        },
+      }),
+    },
+    "Gemini timestamped transcription failed",
+  );
+
+  const json = (await response.json()) as GeminiGenerateResponse;
+  return extractTranscriptSegments(json);
 }
 
 export async function prepareMediaForTranscription(videoUri: string): Promise<PreparedMedia> {
@@ -356,4 +460,104 @@ export async function transcribeAudio(
   ]);
 
   return transcript;
+}
+
+
+
+
+// Timestamped variant using the File API
+export async function transcribeMediaViaFileApiTimestamped(params: {
+  fileUri: string;
+  mimeType: string;
+  onStatus?: (status: TranscriptionStatus) => void;
+  targetSegmentSeconds?: number;
+}): Promise<TranscriptResult> {
+  const { fileUri, mimeType, onStatus, targetSegmentSeconds } = params;
+
+  if (!API_KEY) {
+    console.warn("EXPO_PUBLIC_GEMINI_API_KEY is not set. Using mock response.");
+    const mock: TranscriptResult = {
+      fullText: MOCK_TRANSCRIPT,
+      segments: [
+        { start_s: 0, end_s: 10, text: "Intro and boundary start." },
+        { start_s: 10, end_s: 20, text: "Pond and kitchen bed description." },
+        { start_s: 20, end_s: 30, text: "Return to gate and finish." },
+      ],
+    };
+    onStatus?.({ stage: "transcribing", progress: 1, message: "Using mock response." });
+    return new Promise((resolve) => setTimeout(() => resolve(mock), 600));
+  }
+
+  const info = await FileSystem.getInfoAsync(fileUri);
+  if (!info.exists || info.isDirectory || typeof info.size !== "number") {
+    throw new Error("Recording file is missing or unreadable.");
+  }
+
+  const displayName = fileUri.split("/").pop() ?? "garden-session";
+  onStatus?.({ stage: "uploading", progress: 0 });
+  const uploadUrl = await startResumableUpload({ fileUri, mimeType, displayName, size: info.size });
+
+  const remoteFile = await uploadMediaChunked({
+    uploadUrl,
+    fileUri,
+    mimeType,
+    size: info.size,
+    onProgress: (progress) => onStatus?.({ stage: "uploading", progress }),
+  });
+
+  onStatus?.({ stage: "transcribing", progress: 0 });
+  try {
+    const fileUriForModel = remoteFile.uri ?? (remoteFile.name ? `${API_ROOT}/${remoteFile.name}` : undefined);
+    if (!fileUriForModel) throw new Error("Gemini upload did not return a usable file URI.");
+
+    let activeFile = remoteFile;
+    if (remoteFile.name && remoteFile.state !== "ACTIVE") {
+      const maxAttempts = 30;
+      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        await new Promise((r) => setTimeout(r, 1000));
+        activeFile = await fetchFileMetadata(remoteFile.name!);
+        if (activeFile.state === "ACTIVE") break;
+        onStatus?.({ stage: "transcribing", progress: 0, message: "Processing media on Gemini..." });
+      }
+      if (activeFile.state !== "ACTIVE") throw new Error("Gemini did not activate the uploaded file in time.");
+    }
+
+    const finalFileUri =
+      activeFile.uri ?? (activeFile.name ? `${API_ROOT}/files/${normaliseFileName(activeFile.name)}` : fileUriForModel);
+
+    const result = await requestTranscriptSegments(
+      [ { fileData: { fileUri: finalFileUri, mimeType } } ],
+      { targetSegmentSeconds },
+    );
+
+    onStatus?.({ stage: "transcribing", progress: 1 });
+    return result;
+  } finally {
+    await deleteRemoteFile(remoteFile.name);
+  }
+}
+
+// Timestamped variant using inline data
+export async function transcribeAudioTimestamped(
+  audioBase64: string,
+  mimeType: "audio/wav" | "video/mp4",
+  opts: { targetSegmentSeconds?: number } = {},
+): Promise<TranscriptResult> {
+  if (!API_KEY) {
+    const mock: TranscriptResult = {
+      fullText: MOCK_TRANSCRIPT,
+      segments: [
+        { start_s: 0, end_s: 10, text: "Intro and boundary start." },
+        { start_s: 10, end_s: 20, text: "Pond and kitchen bed description." },
+        { start_s: 20, end_s: 30, text: "Return to gate and finish." },
+      ],
+    };
+    return new Promise((resolve) => setTimeout(() => resolve(mock), 600));
+  }
+
+  const result = await requestTranscriptSegments(
+    [ { inlineData: { mimeType, data: audioBase64 } } ],
+    opts,
+  );
+  return result;
 }

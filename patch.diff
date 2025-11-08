@@ -1,0 +1,178 @@
+*** Begin Patch
+*** Update File: GartenOSMobile_2.0/services/geminiService.ts
+@@
+-const MOCK_TRANSCRIPT = "API key is not configured.";
++const MOCK_TRANSCRIPT = "API key is not configured.";
++
++// Timestamped transcript types
++export type TranscriptSegment = { start_s: number; end_s: number; text: string };
++export type TranscriptResult = { fullText: string; segments: TranscriptSegment[] };
+@@
+ async function requestTranscript(parts: Array<Record<string, unknown>>): Promise<string> {
+@@
+ }
++
++// Ask Gemini to return a JSON transcript with start/end times per segment.
++async function requestTranscriptSegments(
++  parts: Array<Record<string, unknown>>,
++  opts: { targetSegmentSeconds?: number } = {},
++): Promise<TranscriptResult> {
++  const target = Math.max(3, Math.min(20, opts.targetSegmentSeconds ?? 8));
++
++  const response = await geminiRequest(
++    `/${MODEL_NAME}:generateContent`,
++    {
++      method: "POST",
++      body: JSON.stringify({
++        contents: [
++          {
++            role: "user",
++            parts: [
++              {
++                text:
++                  `Transcribe this media from a garden walkthrough. ` +
++                  `Return strictly JSON with the shape {\n  \"fullText\": string,\n  \"segments\": [ { \"start_s\": number, \"end_s\": number, \"text\": string } ]\n}. ` +
++                  `Use seconds from 0. Segment phrases using natural pauses; aim for ${target}s per segment. ` +
++                  `Do not include any commentary or additional fields.`,
++              },
++              ...parts.filter((p) => "fileData" in p || "inlineData" in p),
++            ],
++          },
++        ],
++        generationConfig: { response_mime_type: "application/json" },
++      }),
++    },
++    "Gemini timestamped transcription failed",
++  );
++
++  const json = (await response.json()) as GeminiGenerateResponse;
++  const payloadStr = extractTranscript(json);
++  try {
++    const parsed = JSON.parse(payloadStr) as TranscriptResult;
++    if (!parsed || !Array.isArray(parsed.segments)) {
++      throw new Error("Unexpected JSON structure from Gemini.");
++    }
++    return parsed;
++  } catch (e) {
++    throw new Error(`Unable to parse timestamped transcript JSON: ${(e as Error).message}`);
++  }
++}
+@@
+ export async function transcribeMediaViaFileApi(params: {
+   fileUri: string;
+   mimeType: string;
+   onStatus?: (status: TranscriptionStatus) => void;
+ }): Promise<string> {
+@@
+ }
++
++// Timestamped variant using the File API
++export async function transcribeMediaViaFileApiTimestamped(params: {
++  fileUri: string;
++  mimeType: string;
++  onStatus?: (status: TranscriptionStatus) => void;
++  targetSegmentSeconds?: number;
++}): Promise<TranscriptResult> {
++  const { fileUri, mimeType, onStatus, targetSegmentSeconds } = params;
++
++  if (!API_KEY) {
++    console.warn("EXPO_PUBLIC_GEMINI_API_KEY is not set. Using mock response.");
++    // Simple mock: 3 segments over 30s
++    const mock: TranscriptResult = {
++      fullText: MOCK_TRANSCRIPT,
++      segments: [
++        { start_s: 0, end_s: 10, text: "Intro and boundary start." },
++        { start_s: 10, end_s: 20, text: "Pond and kitchen bed description." },
++        { start_s: 20, end_s: 30, text: "Return to gate and finish." },
++      ],
++    };
++    onStatus?.({ stage: "transcribing", progress: 1, message: "Using mock response." });
++    return new Promise((resolve) => setTimeout(() => resolve(mock), 600));
++  }
++
++  const info = await FileSystem.getInfoAsync(fileUri);
++  if (!info.exists || info.isDirectory || typeof info.size !== "number") {
++    throw new Error("Recording file is missing or unreadable.");
++  }
++
++  const displayName = fileUri.split("/").pop() ?? "garden-session";
++  onStatus?.({ stage: "uploading", progress: 0 });
++  const uploadUrl = await startResumableUpload({ fileUri, mimeType, displayName, size: info.size });
++
++  const remoteFile = await uploadMediaChunked({
++    uploadUrl,
++    fileUri,
++    mimeType,
++    size: info.size,
++    onProgress: (progress) => onStatus?.({ stage: "uploading", progress }),
++  });
++
++  onStatus?.({ stage: "transcribing", progress: 0 });
++  try {
++    const fileUriForModel = remoteFile.uri ?? (remoteFile.name ? `${API_ROOT}/${remoteFile.name}` : undefined);
++    if (!fileUriForModel) throw new Error("Gemini upload did not return a usable file URI.");
++
++    let activeFile = remoteFile;
++    if (remoteFile.name && remoteFile.state !== "ACTIVE") {
++      const maxAttempts = 30;
++      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
++        await new Promise((r) => setTimeout(r, 1000));
++        activeFile = await fetchFileMetadata(remoteFile.name!);
++        if (activeFile.state === "ACTIVE") break;
++        onStatus?.({ stage: "transcribing", progress: 0, message: "Processing media on Gemini..." });
++      }
++      if (activeFile.state !== "ACTIVE") throw new Error("Gemini did not activate the uploaded file in time.");
++    }
++
++    const finalFileUri =
++      activeFile.uri ?? (activeFile.name ? `${API_ROOT}/files/${normaliseFileName(activeFile.name)}` : fileUriForModel);
++
++    const result = await requestTranscriptSegments(
++      [
++        { fileData: { fileUri: finalFileUri, mimeType } },
++      ],
++      { targetSegmentSeconds },
++    );
++
++    onStatus?.({ stage: "transcribing", progress: 1 });
++    return result;
++  } finally {
++    await deleteRemoteFile(remoteFile.name);
++  }
++}
+@@
+ export async function transcribeAudio(
+   audioBase64: string,
+   mimeType: "audio/wav" | "video/mp4",
+ ): Promise<string> {
+@@
+   return transcript;
+ }
++
++// Timestamped variant using inline data
++export async function transcribeAudioTimestamped(
++  audioBase64: string,
++  mimeType: "audio/wav" | "video/mp4",
++  opts: { targetSegmentSeconds?: number } = {},
++): Promise<TranscriptResult> {
++  if (!API_KEY) {
++    const mock: TranscriptResult = {
++      fullText: MOCK_TRANSCRIPT,
++      segments: [
++        { start_s: 0, end_s: 10, text: "Intro and boundary start." },
++        { start_s: 10, end_s: 20, text: "Pond and kitchen bed description." },
++        { start_s: 20, end_s: 30, text: "Return to gate and finish." },
++      ],
++    };
++    return new Promise((resolve) => setTimeout(() => resolve(mock), 600));
++  }
++
++  const result = await requestTranscriptSegments(
++    [
++      { inlineData: { mimeType, data: audioBase64 } },
++    ],
++    opts,
++  );
++  return result;
++}
+*** End Patch

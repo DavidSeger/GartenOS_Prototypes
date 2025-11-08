@@ -7,7 +7,7 @@ import { Screen } from '../types';
 import { TrackMap, TrackPoint } from './TrackMap';
 import { CornersMap, useCornerExportData, CornerExportData } from './CornersMap';
 import { Corner, CornerMetrics } from '../app/utils/geo';
-import { TranscriptionStatus } from '../services/geminiService.ts';
+import { TranscriptionStatus, TranscriptSegment } from '../services/geminiService.ts';
 
 const StyledView = styled(View);
 const StyledText = styled(Text);
@@ -16,6 +16,7 @@ const StyledTouchableOpacity = styled(TouchableOpacity);
 interface PreviewScreenProps {
   videoUri: string | null;
   transcript: string;
+  transcriptSegments: TranscriptSegment[];
   isProcessing: boolean;
   transcriptionStatus: TranscriptionStatus | null;
   onNavigate: (screen: Screen) => void;
@@ -34,6 +35,7 @@ interface PreviewScreenProps {
 const PreviewScreen: React.FC<PreviewScreenProps> = ({
   videoUri,
   transcript,
+  transcriptSegments,
   isProcessing,
   transcriptionStatus,
   onNavigate,
@@ -51,12 +53,68 @@ const PreviewScreen: React.FC<PreviewScreenProps> = ({
   const video = React.useRef<Video | null>(null);
   const exportData = useCornerExportData(corners, metrics);
   const exportReady = Boolean(exportData && metrics);
+  const formatTimecode = React.useCallback((totalSeconds: number) => {
+    if (!Number.isFinite(totalSeconds)) return '0:00';
+    const clamped = Math.max(0, Math.round(totalSeconds));
+    const minutes = Math.floor(clamped / 60);
+    const seconds = String(clamped % 60).padStart(2, '0');
+    return `${minutes}:${seconds}`;
+  }, []);
   const formattedDuration = React.useMemo(() => {
     if (!durationSeconds || durationSeconds < 1) return '0:00';
     const minutes = Math.floor(durationSeconds / 60);
     const seconds = Math.floor(durationSeconds % 60);
     return `${minutes}:${String(seconds).padStart(2, '0')}`;
   }, [durationSeconds]);
+  const derivedSegments = React.useMemo(() => {
+    const cleaned = (transcriptSegments ?? [])
+      .map((segment) => {
+        const start = Number.isFinite(segment.start_s) ? segment.start_s : Number(segment.start_s) || 0;
+        const endCandidate = Number.isFinite(segment.end_s) ? segment.end_s : Number(segment.end_s) || start;
+        const end = endCandidate >= start ? endCandidate : start;
+        const text = segment.text?.trim?.() ?? '';
+        return { start_s: start, end_s: end, text };
+      })
+      .filter((segment) => segment.text.length > 0)
+      .sort((a, b) => a.start_s - b.start_s);
+
+    const hasMeaningfulSegments = cleaned.some((segment) => segment.end_s > segment.start_s + 0.5);
+    if (cleaned.length > 1 || hasMeaningfulSegments) {
+      return cleaned;
+    }
+
+    if (!transcript || !transcript.trim()) {
+      return [];
+    }
+
+    const approxDuration = durationSeconds && durationSeconds > 0 ? durationSeconds : Math.max(30, transcript.length / 6);
+    const chunks = transcript
+      .replace(/\r/g, '')
+      .split(/\n+/)
+      .flatMap((block) => block.match(/[^.!?]+[.!?]?/g) || [])
+      .map((chunk) => chunk.trim())
+      .filter(Boolean);
+
+    if (!chunks.length) {
+      return [];
+    }
+
+    const tokenCounts = chunks.map((chunk) => (chunk.match(/\S+/g) || []).length || 1);
+    const totalTokens = tokenCounts.reduce((sum, count) => sum + count, 0) || 1;
+
+    let elapsed = 0;
+    return chunks.map((chunk, index) => {
+      const share = tokenCounts[index] / totalTokens;
+      const remaining = Math.max(0, approxDuration - elapsed);
+      const idealDuration = approxDuration * share;
+      const chunkDuration = index === chunks.length - 1 ? remaining : Math.max(2, idealDuration);
+      const start = elapsed;
+      const end = Math.min(approxDuration, start + chunkDuration);
+      elapsed = end;
+      return { start_s: start, end_s: end, text: chunk };
+    });
+  }, [transcriptSegments, transcript, durationSeconds]);
+  const hasSegments = derivedSegments.length > 0;
   const statusMessage = React.useMemo(() => {
     if (!isProcessing || !transcriptionStatus) {
       return 'Preparing transcript...';
@@ -183,7 +241,20 @@ const PreviewScreen: React.FC<PreviewScreenProps> = ({
               <StyledText className="text-gray-500 ml-2">{statusMessage}</StyledText>
             </StyledView>
           ) : (
-            <StyledText>{transcript}</StyledText>
+            <>
+              {hasSegments ? (
+                derivedSegments.map((segment, idx) => (
+                  <StyledView key={`${segment.start_s}-${idx}`} className="flex-row items-start mb-1">
+                    <StyledText className="text-[11px] text-gray-600 w-14">
+                      [{formatTimecode(segment.start_s)}]
+                    </StyledText>
+                    <StyledText className="text-sm text-gray-800 flex-1">{segment.text}</StyledText>
+                  </StyledView>
+                ))
+              ) : (
+                <StyledText>{transcript}</StyledText>
+              )}
+            </>
           )}
         </StyledView>
         <StyledView className="flex-row gap-2 justify-center flex-wrap my-2">
@@ -192,9 +263,6 @@ const PreviewScreen: React.FC<PreviewScreenProps> = ({
           </StyledText>
           <StyledText className="bg-green-100 border border-green-200 text-green-800 rounded-full px-3 py-1 text-sm">
             120 m walk
-          </StyledText>
-          <StyledText className="bg-green-100 border border-green-200 text-green-800 rounded-full px-3 py-1 text-sm">
-            GPS synced
           </StyledText>
         </StyledView>
         <StyledView className="flex-row gap-2 justify-center mt-2">
