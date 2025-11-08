@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 
 interface RecordingScreenProps {
@@ -22,115 +22,138 @@ const formatTime = (totalSeconds: number) => {
 };
 
 const RecordingScreen: React.FC<RecordingScreenProps> = ({
-  elapsedSeconds,
-  isPauseSupported,
-  isPaused,
-  onPause,
-  onStop,
-  isStoppingDisabled = false,
-  onMarkCorner,
-  isMarkingCorner,
-  cornerCount,
-  onClosePolygon,
-  canClosePolygon,
-}) => {
+                                                           elapsedSeconds,
+                                                           isPauseSupported,
+                                                           isPaused,
+                                                           onPause,
+                                                           onStop,
+                                                           isStoppingDisabled = false,
+                                                           onMarkCorner,
+                                                           isMarkingCorner,
+                                                           cornerCount,
+                                                           onClosePolygon,
+                                                           canClosePolygon,
+                                                         }) => {
+  const [cornerCountdown, setCornerCountdown] = useState(15);
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout | null = null;
+
+    if (isMarkingCorner) {
+      setCornerCountdown(15);
+      timer = setInterval(() => {
+        setCornerCountdown((prev) => {
+          if (prev <= 1) {
+            if (timer) clearInterval(timer);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } else {
+      setCornerCountdown(15);
+    }
+
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [isMarkingCorner]);
+
   return (
-    <View style={styles.overlay} pointerEvents="box-none">
-      <View style={styles.header} pointerEvents="none">
-        <Text style={styles.recordingLabel}>Recording...</Text>
-        <Text style={styles.subLabel}>Capture your walkthrough while you narrate.</Text>
-      </View>
-
-      <View style={styles.bottomPanel} pointerEvents="box-none">
-        <View style={styles.metaRow} pointerEvents="none">
-          <View style={styles.metaCard}>
-            <Text style={styles.metaLabel}>Elapsed</Text>
-            <Text style={styles.metaValue}>{formatTime(elapsedSeconds)}</Text>
-          </View>
-          {/* <View style={styles.metaCard}>
-            <Text style={styles.metaLabel}>GPS</Text>
-            <Text style={styles.metaValue}>Synced</Text>
-          </View>
-          <View style={styles.metaCard}>
-            <Text style={styles.metaLabel}>Audio</Text>
-            <Text style={styles.metaValue}>Live</Text>
-          </View> */}
+      <View style={styles.overlay} pointerEvents="box-none">
+        <View style={styles.header} pointerEvents="none">
+          <Text style={styles.recordingLabel}>Recording...</Text>
+          <Text style={styles.subLabel}>Capture your walkthrough while you narrate.</Text>
         </View>
 
-        <View style={styles.actionsRow} pointerEvents="box-none">
-          <TouchableOpacity
-            onPress={onPause}
-            style={[
-              styles.primaryButton,
-              (!isPauseSupported || isStoppingDisabled) && styles.disabledButton,
-            ]}
-            activeOpacity={0.85}
-            disabled={!isPauseSupported || isStoppingDisabled}
-          >
-            <View style={styles.buttonHeader}>
-              <View style={[styles.pauseBadge, isPaused && styles.pauseBadgePaused]}>
-                <View style={[styles.pauseGlyph, isPaused && styles.pauseGlyphPaused]} />
-              </View>
-              <Text style={styles.primaryText}>{isPaused ? 'Resume' : 'Pause'}</Text>
+        <View style={styles.bottomPanel} pointerEvents="box-none">
+          <View style={styles.metaRow} pointerEvents="none">
+            <View style={styles.metaCard}>
+              <Text style={styles.metaLabel}>Elapsed</Text>
+              <Text style={styles.metaValue}>{formatTime(elapsedSeconds)}</Text>
             </View>
-            <Text style={styles.primarySubText}>
-              {isPaused ? 'Tap to continue recording' : 'Take a breather'}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={onStop}
-            style={[styles.stopButton, isStoppingDisabled && styles.disabledButton]}
-            activeOpacity={0.85}
-            disabled={isStoppingDisabled}
-          >
-            <View style={styles.buttonHeader}>
-              <View style={styles.stopBadge}>
-                <View style={styles.stopGlyph} />
+          </View>
+
+          <View style={styles.actionsRow} pointerEvents="box-none">
+            <TouchableOpacity
+                onPress={onPause}
+                style={[
+                  styles.primaryButton,
+                  (!isPauseSupported || isStoppingDisabled) && styles.disabledButton,
+                ]}
+                activeOpacity={0.85}
+                disabled={!isPauseSupported || isStoppingDisabled}
+            >
+              <View style={styles.buttonHeader}>
+                <View style={[styles.pauseBadge, isPaused && styles.pauseBadgePaused]}>
+                  <View style={[styles.pauseGlyph, isPaused && styles.pauseGlyphPaused]} />
+                </View>
+                <Text style={styles.primaryText}>{isPaused ? 'Resume' : 'Pause'}</Text>
               </View>
-              <Text style={styles.stopText}>Stop & Continue</Text>
-            </View>
-            <Text style={styles.stopSubText}>Save this take and review</Text>
-          </TouchableOpacity>
-        </View>
+              <Text style={styles.primarySubText}>
+                {isPaused ? 'Tap to continue recording' : 'Take a breather'}
+              </Text>
+            </TouchableOpacity>
 
-        <View style={styles.cornerRow} pointerEvents="box-none">
-          <TouchableOpacity
-            onPress={onMarkCorner}
-            style={[styles.cornerButton, (isMarkingCorner || isStoppingDisabled) && styles.disabledButton]}
-            activeOpacity={0.85}
-            disabled={isMarkingCorner || isStoppingDisabled}
-          >
-            <Text style={styles.cornerTitle}>{isMarkingCorner ? 'Averaging corner…' : 'Mark corner (10s)'}</Text>
-            <Text style={styles.cornerSubtitle}>
-              {isMarkingCorner ? 'Hold steady while we capture GPS' : 'Stand still at each corner and tap to sample'}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={onClosePolygon}
-            style={[
-              styles.cornerButton,
-              !canClosePolygon && styles.disabledButton,
-              { backgroundColor: 'rgba(37, 99, 235, 0.1)', borderColor: 'rgba(59, 130, 246, 0.4)' },
-            ]}
-            activeOpacity={0.85}
-            disabled={!canClosePolygon}
-          >
-            <Text style={styles.cornerTitle}>Close area</Text>
-            <Text style={styles.cornerSubtitle}>Connect first and last corner to calculate area</Text>
-          </TouchableOpacity>
-        </View>
+            <TouchableOpacity
+                onPress={() => {
+                  if (canClosePolygon) {
+                    onClosePolygon();
+                  }
+                  onStop();
+                }}
+                style={[styles.stopButton, isStoppingDisabled && styles.disabledButton]}
+                activeOpacity={0.85}
+                disabled={isStoppingDisabled}
+            >
+              <View style={styles.buttonHeader}>
+                <View style={styles.stopBadge}>
+                  <View style={styles.stopGlyph} />
+                </View>
+                <Text style={styles.stopText}>Stop</Text>
+              </View>
+              <Text style={styles.stopSubText}>
+                {canClosePolygon
+                    ? 'Close area and save this take'
+                    : 'Save this take and review'}
+              </Text>
+            </TouchableOpacity>
+          </View>
 
-        {!isPauseSupported && (
-          <Text style={styles.helperText}>
-            Pause isn't available on this device. Stop when you're ready to review.
+          <View style={styles.cornerRow} pointerEvents="box-none">
+            <TouchableOpacity
+                onPress={onMarkCorner}
+                style={[
+                  styles.cornerButton,
+                  (isMarkingCorner || isStoppingDisabled) && styles.disabledButton,
+                ]}
+                activeOpacity={0.85}
+                disabled={isMarkingCorner || isStoppingDisabled}
+            >
+              <Text style={styles.cornerTitle}>
+                {isMarkingCorner
+                    ? `Averaging corner… ${cornerCountdown}s`
+                    : 'Mark corner (15s)'}
+              </Text>
+              <Text style={styles.cornerSubtitle}>
+                {isMarkingCorner
+                    ? 'Hold steady while we capture GPS'
+                    : 'Stand still at each corner and tap to sample'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {!isPauseSupported && (
+              <Text style={styles.helperText}>
+                Pause isn't available on this device. Stop when you're ready to review.
+              </Text>
+          )}
+          <Text style={[styles.helperText, { marginTop: 6 }]}>
+            Corners captured: {cornerCount}
+            {canClosePolygon ? ' • Press stop to close Area' : ''}
           </Text>
-        )}
-        <Text style={[styles.helperText, { marginTop: 6 }]}>
-          Corners captured: {cornerCount}
-          {canClosePolygon ? ' • Ready to close' : ''}
-        </Text>
+        </View>
       </View>
-    </View>
   );
 };
 
@@ -158,6 +181,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: 'rgba(255,255,255,0.85)',
   },
+  bottomPanel: {
+    width: '100%',
+    // faint bg so text/buttons stand out on camera
+    backgroundColor: 'rgba(15, 23, 42, 0.35)',
+    borderRadius: 18,
+    padding: 12,
+  },
   metaRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -166,7 +196,7 @@ const styles = StyleSheet.create({
   },
   metaCard: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.55)',
+    backgroundColor: 'rgba(15, 23, 42, 0.9)',
     borderRadius: 14,
     paddingVertical: 12,
     paddingHorizontal: 10,
@@ -186,22 +216,19 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#ffffff',
   },
-  bottomPanel: {
-    width: '100%',
-  },
   actionsRow: {
     flexDirection: 'row',
     alignItems: 'stretch',
-    columnGap: 16,
+    columnGap: 12,
   },
   primaryButton: {
     flex: 1,
-    backgroundColor: 'rgba(15, 118, 110, 0.12)',
+    backgroundColor: '#0f766e', // solid teal
     borderRadius: 18,
-    paddingVertical: 20,
-    paddingHorizontal: 18,
+    paddingVertical: 18,
+    paddingHorizontal: 16,
     borderWidth: 1,
-    borderColor: 'rgba(13, 148, 136, 0.45)',
+    borderColor: 'rgba(13, 148, 136, 0.55)',
   },
   buttonHeader: {
     flexDirection: 'row',
@@ -209,21 +236,15 @@ const styles = StyleSheet.create({
     columnGap: 14,
   },
   pauseBadge: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: '#22c55e',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: 'rgba(34, 197, 94, 0.45)',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
-    elevation: 3,
   },
   pauseBadgePaused: {
     backgroundColor: '#f97316',
-    shadowColor: 'rgba(249, 115, 22, 0.45)',
   },
   pauseGlyph: {
     width: 14,
@@ -237,52 +258,47 @@ const styles = StyleSheet.create({
     transform: [{ rotate: '45deg' }],
   },
   primaryText: {
-    color: '#0f172a',
+    color: '#ffffff',
     fontWeight: '700',
     fontSize: 17,
   },
   primarySubText: {
     marginTop: 10,
-    color: '#037971',
+    color: 'rgba(241, 245, 249, 0.85)',
     fontSize: 13,
   },
   stopButton: {
     flex: 1,
-    backgroundColor: 'rgba(248, 113, 113, 0.12)',
+    backgroundColor: '#ef4444',
     borderRadius: 18,
-    paddingVertical: 20,
-    paddingHorizontal: 18,
+    paddingVertical: 18,
+    paddingHorizontal: 16,
     borderWidth: 1,
-    borderColor: 'rgba(248, 113, 113, 0.5)',
+    borderColor: 'rgba(248, 113, 113, 0.6)',
   },
   stopBadge: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: '#ef4444',
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(254, 226, 226, 0.25)',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: 'rgba(239, 68, 68, 0.45)',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
-    elevation: 3,
   },
   stopGlyph: {
-    width: 18,
-    height: 18,
-    borderRadius: 6,
+    width: 14,
+    height: 14,
+    borderRadius: 4,
     backgroundColor: '#fee2e2',
   },
   stopText: {
-    color: '#7f1d1d',
+    color: '#ffffff',
     fontSize: 17,
     fontWeight: '700',
   },
   stopSubText: {
     marginTop: 10,
     fontSize: 12,
-    color: '#be123c',
+    color: 'rgba(255,255,255,0.85)',
   },
   helperText: {
     marginTop: 12,
@@ -291,7 +307,7 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.9)',
   },
   disabledButton: {
-    opacity: 0.6,
+    opacity: 0.55,
   },
   cornerRow: {
     marginTop: 18,
@@ -299,22 +315,22 @@ const styles = StyleSheet.create({
     rowGap: 12,
   },
   cornerButton: {
-    backgroundColor: 'rgba(15, 118, 110, 0.12)',
-    borderRadius: 18,
+    backgroundColor: '#d1fae5',
+    borderRadius: 16,
     paddingVertical: 16,
-    paddingHorizontal: 18,
+    paddingHorizontal: 16,
     borderWidth: 1,
-    borderColor: 'rgba(13, 148, 136, 0.45)',
+    borderColor: '#6ee7b7',
   },
   cornerTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#0f172a',
+    color: '#064e3b',
   },
   cornerSubtitle: {
     marginTop: 6,
     fontSize: 12,
-    color: '#0f766e',
+    color: '#047857',
   },
 });
 
