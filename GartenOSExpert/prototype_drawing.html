@@ -285,18 +285,17 @@
       };
     }
 
-    // v1 shape with cornerDrawing
     const cd = raw?.cornerDrawing;
     if (cd && Array.isArray(cd.points)) {
       return {
         points: cd.points,
         closed: !!cd.closed,
-        surface: 'grass',                         // default if not provided
-        scale: typeof cd.scale === 'number' ? cd.scale : null, // assume meters/px (how you used it before)
+        surface: 'grass',
+        scale: typeof cd.scale === 'number' ? cd.scale : null,
         unit: 'm',
         calibratedEdgeIndex: null,
-        annotations: [],                          // v1 didn’t include these → start empty
-        zones: [],
+        annotations: Array.isArray(raw.annotations) ? raw.annotations : [],
+        zones: Array.isArray(raw.zones) ? raw.zones : [],
         _meta: {
           ts: typeof raw.exportedAt === 'number' ? raw.exportedAt : undefined,
           app: raw.version != null ? `garden-mapper-v${raw.version}` : 'garden-mapper-v1'
