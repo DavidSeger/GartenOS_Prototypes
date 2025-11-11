@@ -1,4 +1,4 @@
-import { TranscriptSegment } from './geminiService';
+import { TranscriptSegment } from './geminiService.ts';
 
 const OPENAI_API_KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
 const OPENAI_API_URL =

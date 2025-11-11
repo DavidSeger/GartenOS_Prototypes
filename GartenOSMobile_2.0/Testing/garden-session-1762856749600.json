@@ -1,0 +1,1442 @@
+{
+  "version": 1,
+  "exportedAt": 1762856749600,
+  "transcript": "[0:00] So\n[0:01] this is\n[0:02] the beginning\n[0:03] of my\n[0:04] garden\n[0:05] to the\n[0:06] left of\n[0:07] me, so\n[0:08] the left\n[0:09] edge of\n[0:10] the garden\n[0:11] is one,\n[0:12] two, three\n[0:13] trees.\n[0:14] Which is\n[0:15] here, here\n[0:16] and here\n[0:17] are the three\n[0:18] trees. Now\n[0:19] if we move\n[0:20] to the other\n[0:21] edge of the\n[0:22] garden over\n[0:23] here, we\n[0:24] can see\n[0:25] the middle\n[0:26] of the garden.\n[0:27] This is\n[0:28] just empty\n[0:29] grass. So\n[0:30] it's grass\n[0:31] garden. Now\n[0:32] if we move\n[0:33] along the\n[0:34] next corner,\n[0:35] the next\n[0:36] edge of\n[0:37] the garden\n[0:38] we see\n[0:39] one, two,\n[0:40] three, four\n[0:41] trees. So\n[0:42] now we're\n[0:43] moving and\n[0:44] we're looking\n[0:45] at the four\n[0:46] trees and\n[0:47] we are\n[0:48] going to\n[0:49] the other\n[0:50] end of the\n[0:51] garden. Now\n[0:52] we have\n[0:53] reached the\n[0:54] other end\n[0:55] of the garden\n[0:56] and here\n[0:57] we have\n[0:58] one, two,\n[0:59] three, four,\n[1:00] five, six,\n[1:01] seven, eight,\n[1:02] nine, ten\n[1:03] along this\n[1:04] edge of the\n[1:05] garden, we\n[1:06] have ten\n[1:07] trees. So\n[1:08] that is\n[1:09] between where\n[1:10] I was at\n[1:11] now and\n[1:12] this corner.\n[1:13] So we\n[1:14] have three\n[1:15] edges of\n[1:16] the garden\n[1:17] that are\n[1:18] that have\n[1:19] planted trees\n[1:20] on them.\n[1:21] Ten on\n[1:22] this way\n[1:23] that we\n[1:24] just walked\n[1:25] for on\n[1:26] the long\n[1:27] one and\n[1:28] in the beginning\n[1:29] there were\n[1:30] three trees.\n[1:31] And everything\n[1:32] else is\n[1:33] just grass.",
+  "transcriptSegments": [
+    {
+      "start_s": 0,
+      "end_s": 1,
+      "text": "So"
+    },
+    {
+      "start_s": 1,
+      "end_s": 2,
+      "text": "this is"
+    },
+    {
+      "start_s": 2,
+      "end_s": 3,
+      "text": "the beginning"
+    },
+    {
+      "start_s": 3,
+      "end_s": 4,
+      "text": "of my"
+    },
+    {
+      "start_s": 4,
+      "end_s": 5,
+      "text": "garden"
+    },
+    {
+      "start_s": 5,
+      "end_s": 6,
+      "text": "to the"
+    },
+    {
+      "start_s": 6,
+      "end_s": 7,
+      "text": "left of"
+    },
+    {
+      "start_s": 7,
+      "end_s": 8,
+      "text": "me, so"
+    },
+    {
+      "start_s": 8,
+      "end_s": 9,
+      "text": "the left"
+    },
+    {
+      "start_s": 9,
+      "end_s": 10,
+      "text": "edge of"
+    },
+    {
+      "start_s": 10,
+      "end_s": 11,
+      "text": "the garden"
+    },
+    {
+      "start_s": 11,
+      "end_s": 12,
+      "text": "is one,"
+    },
+    {
+      "start_s": 12,
+      "end_s": 13,
+      "text": "two, three"
+    },
+    {
+      "start_s": 13,
+      "end_s": 14,
+      "text": "trees."
+    },
+    {
+      "start_s": 14,
+      "end_s": 15,
+      "text": "Which is"
+    },
+    {
+      "start_s": 15,
+      "end_s": 16,
+      "text": "here, here"
+    },
+    {
+      "start_s": 16,
+      "end_s": 17,
+      "text": "and here"
+    },
+    {
+      "start_s": 17,
+      "end_s": 18,
+      "text": "are the three"
+    },
+    {
+      "start_s": 18,
+      "end_s": 19,
+      "text": "trees. Now"
+    },
+    {
+      "start_s": 19,
+      "end_s": 20,
+      "text": "if we move"
+    },
+    {
+      "start_s": 20,
+      "end_s": 21,
+      "text": "to the other"
+    },
+    {
+      "start_s": 21,
+      "end_s": 22,
+      "text": "edge of the"
+    },
+    {
+      "start_s": 22,
+      "end_s": 23,
+      "text": "garden over"
+    },
+    {
+      "start_s": 23,
+      "end_s": 24,
+      "text": "here, we"
+    },
+    {
+      "start_s": 24,
+      "end_s": 25,
+      "text": "can see"
+    },
+    {
+      "start_s": 25,
+      "end_s": 26,
+      "text": "the middle"
+    },
+    {
+      "start_s": 26,
+      "end_s": 27,
+      "text": "of the garden."
+    },
+    {
+      "start_s": 27,
+      "end_s": 28,
+      "text": "This is"
+    },
+    {
+      "start_s": 28,
+      "end_s": 29,
+      "text": "just empty"
+    },
+    {
+      "start_s": 29,
+      "end_s": 30,
+      "text": "grass. So"
+    },
+    {
+      "start_s": 30,
+      "end_s": 31,
+      "text": "it's grass"
+    },
+    {
+      "start_s": 31,
+      "end_s": 32,
+      "text": "garden. Now"
+    },
+    {
+      "start_s": 32,
+      "end_s": 33,
+      "text": "if we move"
+    },
+    {
+      "start_s": 33,
+      "end_s": 34,
+      "text": "along the"
+    },
+    {
+      "start_s": 34,
+      "end_s": 35,
+      "text": "next corner,"
+    },
+    {
+      "start_s": 35,
+      "end_s": 36,
+      "text": "the next"
+    },
+    {
+      "start_s": 36,
+      "end_s": 37,
+      "text": "edge of"
+    },
+    {
+      "start_s": 37,
+      "end_s": 38,
+      "text": "the garden"
+    },
+    {
+      "start_s": 38,
+      "end_s": 39,
+      "text": "we see"
+    },
+    {
+      "start_s": 39,
+      "end_s": 40,
+      "text": "one, two,"
+    },
+    {
+      "start_s": 40,
+      "end_s": 41,
+      "text": "three, four"
+    },
+    {
+      "start_s": 41,
+      "end_s": 42,
+      "text": "trees. So"
+    },
+    {
+      "start_s": 42,
+      "end_s": 43,
+      "text": "now we're"
+    },
+    {
+      "start_s": 43,
+      "end_s": 44,
+      "text": "moving and"
+    },
+    {
+      "start_s": 44,
+      "end_s": 45,
+      "text": "we're looking"
+    },
+    {
+      "start_s": 45,
+      "end_s": 46,
+      "text": "at the four"
+    },
+    {
+      "start_s": 46,
+      "end_s": 47,
+      "text": "trees and"
+    },
+    {
+      "start_s": 47,
+      "end_s": 48,
+      "text": "we are"
+    },
+    {
+      "start_s": 48,
+      "end_s": 49,
+      "text": "going to"
+    },
+    {
+      "start_s": 49,
+      "end_s": 50,
+      "text": "the other"
+    },
+    {
+      "start_s": 50,
+      "end_s": 51,
+      "text": "end of the"
+    },
+    {
+      "start_s": 51,
+      "end_s": 52,
+      "text": "garden. Now"
+    },
+    {
+      "start_s": 52,
+      "end_s": 53,
+      "text": "we have"
+    },
+    {
+      "start_s": 53,
+      "end_s": 54,
+      "text": "reached the"
+    },
+    {
+      "start_s": 54,
+      "end_s": 55,
+      "text": "other end"
+    },
+    {
+      "start_s": 55,
+      "end_s": 56,
+      "text": "of the garden"
+    },
+    {
+      "start_s": 56,
+      "end_s": 57,
+      "text": "and here"
+    },
+    {
+      "start_s": 57,
+      "end_s": 58,
+      "text": "we have"
+    },
+    {
+      "start_s": 58,
+      "end_s": 59,
+      "text": "one, two,"
+    },
+    {
+      "start_s": 59,
+      "end_s": 60,
+      "text": "three, four,"
+    },
+    {
+      "start_s": 60,
+      "end_s": 61,
+      "text": "five, six,"
+    },
+    {
+      "start_s": 61,
+      "end_s": 62,
+      "text": "seven, eight,"
+    },
+    {
+      "start_s": 62,
+      "end_s": 63,
+      "text": "nine, ten"
+    },
+    {
+      "start_s": 63,
+      "end_s": 64,
+      "text": "along this"
+    },
+    {
+      "start_s": 64,
+      "end_s": 65,
+      "text": "edge of the"
+    },
+    {
+      "start_s": 65,
+      "end_s": 66,
+      "text": "garden, we"
+    },
+    {
+      "start_s": 66,
+      "end_s": 67,
+      "text": "have ten"
+    },
+    {
+      "start_s": 67,
+      "end_s": 68,
+      "text": "trees. So"
+    },
+    {
+      "start_s": 68,
+      "end_s": 69,
+      "text": "that is"
+    },
+    {
+      "start_s": 69,
+      "end_s": 70,
+      "text": "between where"
+    },
+    {
+      "start_s": 70,
+      "end_s": 71,
+      "text": "I was at"
+    },
+    {
+      "start_s": 71,
+      "end_s": 72,
+      "text": "now and"
+    },
+    {
+      "start_s": 72,
+      "end_s": 73,
+      "text": "this corner."
+    },
+    {
+      "start_s": 73,
+      "end_s": 74,
+      "text": "So we"
+    },
+    {
+      "start_s": 74,
+      "end_s": 75,
+      "text": "have three"
+    },
+    {
+      "start_s": 75,
+      "end_s": 76,
+      "text": "edges of"
+    },
+    {
+      "start_s": 76,
+      "end_s": 77,
+      "text": "the garden"
+    },
+    {
+      "start_s": 77,
+      "end_s": 78,
+      "text": "that are"
+    },
+    {
+      "start_s": 78,
+      "end_s": 79,
+      "text": "that have"
+    },
+    {
+      "start_s": 79,
+      "end_s": 80,
+      "text": "planted trees"
+    },
+    {
+      "start_s": 80,
+      "end_s": 81,
+      "text": "on them."
+    },
+    {
+      "start_s": 81,
+      "end_s": 82,
+      "text": "Ten on"
+    },
+    {
+      "start_s": 82,
+      "end_s": 83,
+      "text": "this way"
+    },
+    {
+      "start_s": 83,
+      "end_s": 84,
+      "text": "that we"
+    },
+    {
+      "start_s": 84,
+      "end_s": 85,
+      "text": "just walked"
+    },
+    {
+      "start_s": 85,
+      "end_s": 86,
+      "text": "for on"
+    },
+    {
+      "start_s": 86,
+      "end_s": 87,
+      "text": "the long"
+    },
+    {
+      "start_s": 87,
+      "end_s": 88,
+      "text": "one and"
+    },
+    {
+      "start_s": 88,
+      "end_s": 89,
+      "text": "in the beginning"
+    },
+    {
+      "start_s": 89,
+      "end_s": 90,
+      "text": "there were"
+    },
+    {
+      "start_s": 90,
+      "end_s": 91,
+      "text": "three trees."
+    },
+    {
+      "start_s": 91,
+      "end_s": 92,
+      "text": "And everything"
+    },
+    {
+      "start_s": 92,
+      "end_s": 93,
+      "text": "else is"
+    },
+    {
+      "start_s": 93,
+      "end_s": 94,
+      "text": "just grass."
+    }
+  ],
+  "headings": [
+    {
+      "second": 5,
+      "heading_deg": 285.77
+    },
+    {
+      "second": 6,
+      "heading_deg": 310.91
+    },
+    {
+      "second": 7,
+      "heading_deg": 289.93
+    },
+    {
+      "second": 8,
+      "heading_deg": 137.79
+    },
+    {
+      "second": 9,
+      "heading_deg": 200.12
+    },
+    {
+      "second": 10,
+      "heading_deg": 202.84
+    },
+    {
+      "second": 11,
+      "heading_deg": 214.22
+    },
+    {
+      "second": 12,
+      "heading_deg": 334.78
+    },
+    {
+      "second": 13,
+      "heading_deg": 343.34
+    },
+    {
+      "second": 14,
+      "heading_deg": 345.51
+    },
+    {
+      "second": 15,
+      "heading_deg": 325.78
+    },
+    {
+      "second": 16,
+      "heading_deg": 251.26
+    },
+    {
+      "second": 17,
+      "heading_deg": 241.83
+    },
+    {
+      "second": 18,
+      "heading_deg": 80.61
+    },
+    {
+      "second": 19,
+      "heading_deg": 112.11
+    },
+    {
+      "second": 20,
+      "heading_deg": 115.31
+    },
+    {
+      "second": 21,
+      "heading_deg": 112.14
+    },
+    {
+      "second": 22,
+      "heading_deg": 142.05
+    },
+    {
+      "second": 23,
+      "heading_deg": 181.03
+    },
+    {
+      "second": 24,
+      "heading_deg": 181.24
+    },
+    {
+      "second": 25,
+      "heading_deg": 114.34
+    },
+    {
+      "second": 26,
+      "heading_deg": 237.79
+    },
+    {
+      "second": 27,
+      "heading_deg": 259.59
+    },
+    {
+      "second": 28,
+      "heading_deg": 243.89
+    },
+    {
+      "second": 29,
+      "heading_deg": 192.78
+    },
+    {
+      "second": 30,
+      "heading_deg": 180
+    },
+    {
+      "second": 31,
+      "heading_deg": 180
+    },
+    {
+      "second": 32,
+      "heading_deg": 263.02
+    },
+    {
+      "second": 33,
+      "heading_deg": 76.52
+    },
+    {
+      "second": 34,
+      "heading_deg": 318.83
+    },
+    {
+      "second": 35,
+      "heading_deg": 208.12
+    },
+    {
+      "second": 36,
+      "heading_deg": 256.23
+    },
+    {
+      "second": 37,
+      "heading_deg": 270
+    },
+    {
+      "second": 38,
+      "heading_deg": 242.3
+    },
+    {
+      "second": 39,
+      "heading_deg": 214.22
+    },
+    {
+      "second": 40,
+      "heading_deg": 164.78
+    },
+    {
+      "second": 41,
+      "heading_deg": 120.46
+    },
+    {
+      "second": 42,
+      "heading_deg": 305.8
+    },
+    {
+      "second": 43,
+      "heading_deg": 73.83
+    },
+    {
+      "second": 44,
+      "heading_deg": 101.73
+    },
+    {
+      "second": 45,
+      "heading_deg": 121.81
+    },
+    {
+      "second": 46,
+      "heading_deg": 130.82
+    },
+    {
+      "second": 47,
+      "heading_deg": 135.88
+    },
+    {
+      "second": 48,
+      "heading_deg": 126.32
+    },
+    {
+      "second": 49,
+      "heading_deg": 120.68
+    },
+    {
+      "second": 50,
+      "heading_deg": 122.63
+    },
+    {
+      "second": 51,
+      "heading_deg": 133.43
+    },
+    {
+      "second": 52,
+      "heading_deg": 129.05
+    },
+    {
+      "second": 53,
+      "heading_deg": 121.81
+    },
+    {
+      "second": 54,
+      "heading_deg": 126.32
+    },
+    {
+      "second": 55,
+      "heading_deg": 126.32
+    },
+    {
+      "second": 56,
+      "heading_deg": 7.05
+    },
+    {
+      "second": 57,
+      "heading_deg": 345.06
+    },
+    {
+      "second": 58,
+      "heading_deg": 326.77
+    },
+    {
+      "second": 59,
+      "heading_deg": 73.62
+    },
+    {
+      "second": 60,
+      "heading_deg": 130.03
+    },
+    {
+      "second": 61,
+      "heading_deg": 310.62
+    },
+    {
+      "second": 62,
+      "heading_deg": 180
+    },
+    {
+      "second": 63,
+      "heading_deg": 198.78
+    },
+    {
+      "second": 64,
+      "heading_deg": 356.46
+    },
+    {
+      "second": 65,
+      "heading_deg": 292.78
+    },
+    {
+      "second": 66,
+      "heading_deg": 341.22
+    },
+    {
+      "second": 67,
+      "heading_deg": 344.78
+    },
+    {
+      "second": 68,
+      "heading_deg": 342.01
+    },
+    {
+      "second": 69,
+      "heading_deg": 338.97
+    },
+    {
+      "second": 70,
+      "heading_deg": 312.14
+    },
+    {
+      "second": 71,
+      "heading_deg": 192.78
+    },
+    {
+      "second": 72,
+      "heading_deg": 205.13
+    },
+    {
+      "second": 73,
+      "heading_deg": 195.08
+    },
+    {
+      "second": 74,
+      "heading_deg": 191.96
+    },
+    {
+      "second": 75,
+      "heading_deg": 190.93
+    },
+    {
+      "second": 76,
+      "heading_deg": 204.08
+    },
+    {
+      "second": 77,
+      "heading_deg": 25.91
+    },
+    {
+      "second": 78,
+      "heading_deg": 350.35
+    },
+    {
+      "second": 79,
+      "heading_deg": 321.78
+    },
+    {
+      "second": 80,
+      "heading_deg": 284.71
+    },
+    {
+      "second": 81,
+      "heading_deg": 38.63
+    },
+    {
+      "second": 82,
+      "heading_deg": 302.21
+    },
+    {
+      "second": 83,
+      "heading_deg": 291.85
+    },
+    {
+      "second": 84,
+      "heading_deg": 293.38
+    },
+    {
+      "second": 85,
+      "heading_deg": 325.78
+    },
+    {
+      "second": 86,
+      "heading_deg": 323.92
+    },
+    {
+      "second": 87,
+      "heading_deg": 11.53
+    },
+    {
+      "second": 88,
+      "heading_deg": 116.11
+    },
+    {
+      "second": 89,
+      "heading_deg": 116.11
+    },
+    {
+      "second": 90,
+      "heading_deg": 290.18
+    },
+    {
+      "second": 91,
+      "heading_deg": 282.74
+    },
+    {
+      "second": 92,
+      "heading_deg": 311.94
+    },
+    {
+      "second": 93,
+      "heading_deg": 341.74
+    },
+    {
+      "second": 94,
+      "heading_deg": 340.04
+    },
+    {
+      "second": 95,
+      "heading_deg": 323.85
+    },
+    {
+      "second": 96,
+      "heading_deg": 338.76
+    },
+    {
+      "second": 97,
+      "heading_deg": 32.53
+    },
+    {
+      "second": 98,
+      "heading_deg": 32.53
+    }
+  ],
+  "annotations": [],
+  "videoUri": "file:///data/user/0/host.exp.exponent/cache/Camera/bee7d4f3-abf2-4fa8-8335-64350fea01a6.mp4",
+  "gpsTrack": [
+    {
+      "latitude": 47.1395961,
+      "longitude": 9.5178422,
+      "timestamp": 1762856417183
+    },
+    {
+      "latitude": 47.1396044,
+      "longitude": 9.517799,
+      "timestamp": 1762856418183
+    },
+    {
+      "latitude": 47.1396133,
+      "longitude": 9.5177839,
+      "timestamp": 1762856419183
+    },
+    {
+      "latitude": 47.1396151,
+      "longitude": 9.5177766,
+      "timestamp": 1762856420182
+    },
+    {
+      "latitude": 47.1396148,
+      "longitude": 9.517777,
+      "timestamp": 1762856421183
+    },
+    {
+      "latitude": 47.1396135,
+      "longitude": 9.5177763,
+      "timestamp": 1762856422184
+    },
+    {
+      "latitude": 47.1396114,
+      "longitude": 9.517775,
+      "timestamp": 1762856423184
+    },
+    {
+      "latitude": 47.1396082,
+      "longitude": 9.5177718,
+      "timestamp": 1762856424182
+    },
+    {
+      "latitude": 47.1396095,
+      "longitude": 9.5177709,
+      "timestamp": 1762856425183
+    },
+    {
+      "latitude": 47.139612,
+      "longitude": 9.5177698,
+      "timestamp": 1762856426183
+    },
+    {
+      "latitude": 47.139617,
+      "longitude": 9.5177679,
+      "timestamp": 1762856427183
+    },
+    {
+      "latitude": 47.1396176,
+      "longitude": 9.5177673,
+      "timestamp": 1762856428184
+    },
+    {
+      "latitude": 47.1396173,
+      "longitude": 9.517766,
+      "timestamp": 1762856429182
+    },
+    {
+      "latitude": 47.1396122,
+      "longitude": 9.517752,
+      "timestamp": 1762856430182
+    },
+    {
+      "latitude": 47.1396131,
+      "longitude": 9.51776,
+      "timestamp": 1762856431182
+    },
+    {
+      "latitude": 47.139611,
+      "longitude": 9.5177676,
+      "timestamp": 1762856432182
+    },
+    {
+      "latitude": 47.1396064,
+      "longitude": 9.5177819,
+      "timestamp": 1762856433182
+    },
+    {
+      "latitude": 47.1396033,
+      "longitude": 9.5177931,
+      "timestamp": 1762856434181
+    },
+    {
+      "latitude": 47.1395992,
+      "longitude": 9.5177978,
+      "timestamp": 1762856435183
+    },
+    {
+      "latitude": 47.1395879,
+      "longitude": 9.5177975,
+      "timestamp": 1762856436181
+    },
+    {
+      "latitude": 47.1395785,
+      "longitude": 9.5177972,
+      "timestamp": 1762856437181
+    },
+    {
+      "latitude": 47.1395733,
+      "longitude": 9.5178141,
+      "timestamp": 1762856438182
+    },
+    {
+      "latitude": 47.1395718,
+      "longitude": 9.5178106,
+      "timestamp": 1762856439182
+    },
+    {
+      "latitude": 47.1395713,
+      "longitude": 9.5178066,
+      "timestamp": 1762856440182
+    },
+    {
+      "latitude": 47.1395708,
+      "longitude": 9.5178051,
+      "timestamp": 1762856441182
+    },
+    {
+      "latitude": 47.1395705,
+      "longitude": 9.517805,
+      "timestamp": 1762856442182
+    },
+    {
+      "latitude": 47.1395697,
+      "longitude": 9.517805,
+      "timestamp": 1762856443182
+    },
+    {
+      "latitude": 47.1395695,
+      "longitude": 9.517805,
+      "timestamp": 1762856444182
+    },
+    {
+      "latitude": 47.1395694,
+      "longitude": 9.5178038,
+      "timestamp": 1762856445182
+    },
+    {
+      "latitude": 47.1395709,
+      "longitude": 9.517813,
+      "timestamp": 1762856446182
+    },
+    {
+      "latitude": 47.1395716,
+      "longitude": 9.5178121,
+      "timestamp": 1762856447184
+    },
+    {
+      "latitude": 47.1395702,
+      "longitude": 9.517811,
+      "timestamp": 1762856448182
+    },
+    {
+      "latitude": 47.13957,
+      "longitude": 9.5178098,
+      "timestamp": 1762856449182
+    },
+    {
+      "latitude": 47.13957,
+      "longitude": 9.5178077,
+      "timestamp": 1762856450182
+    },
+    {
+      "latitude": 47.1395695,
+      "longitude": 9.5178063,
+      "timestamp": 1762856451182
+    },
+    {
+      "latitude": 47.1395682,
+      "longitude": 9.517805,
+      "timestamp": 1762856452181
+    },
+    {
+      "latitude": 47.1395677,
+      "longitude": 9.5178052,
+      "timestamp": 1762856452837
+    },
+    {
+      "latitude": 47.1395672,
+      "longitude": 9.5178055,
+      "timestamp": 1762856453587
+    },
+    {
+      "latitude": 47.1395554,
+      "longitude": 9.517835,
+      "timestamp": 1762856454181
+    },
+    {
+      "latitude": 47.1395632,
+      "longitude": 9.5178191,
+      "timestamp": 1762856454837
+    },
+    {
+      "latitude": 47.1395637,
+      "longitude": 9.5178285,
+      "timestamp": 1762856455437
+    },
+    {
+      "latitude": 47.1395651,
+      "longitude": 9.5178356,
+      "timestamp": 1762856456078
+    },
+    {
+      "latitude": 47.1395614,
+      "longitude": 9.5178618,
+      "timestamp": 1762856456636
+    },
+    {
+      "latitude": 47.1395571,
+      "longitude": 9.5178784,
+      "timestamp": 1762856457183
+    },
+    {
+      "latitude": 47.1395498,
+      "longitude": 9.5178957,
+      "timestamp": 1762856457857
+    },
+    {
+      "latitude": 47.1395412,
+      "longitude": 9.5179108,
+      "timestamp": 1762856458487
+    },
+    {
+      "latitude": 47.1395355,
+      "longitude": 9.5179205,
+      "timestamp": 1762856459058
+    },
+    {
+      "latitude": 47.1395261,
+      "longitude": 9.5179339,
+      "timestamp": 1762856459760
+    },
+    {
+      "latitude": 47.1395194,
+      "longitude": 9.5179452,
+      "timestamp": 1762856460306
+    },
+    {
+      "latitude": 47.1395138,
+      "longitude": 9.5179564,
+      "timestamp": 1762856460977
+    },
+    {
+      "latitude": 47.1395092,
+      "longitude": 9.5179678,
+      "timestamp": 1762856461560
+    },
+    {
+      "latitude": 47.1395043,
+      "longitude": 9.5179907,
+      "timestamp": 1762856462182
+    },
+    {
+      "latitude": 47.1395016,
+      "longitude": 9.5179969,
+      "timestamp": 1762856462820
+    },
+    {
+      "latitude": 47.1394963,
+      "longitude": 9.5180082,
+      "timestamp": 1762856463560
+    },
+    {
+      "latitude": 47.1394916,
+      "longitude": 9.5180155,
+      "timestamp": 1762856464127
+    },
+    {
+      "latitude": 47.1394852,
+      "longitude": 9.5180271,
+      "timestamp": 1762856464957
+    },
+    {
+      "latitude": 47.1394825,
+      "longitude": 9.5180335,
+      "timestamp": 1762856465498
+    },
+    {
+      "latitude": 47.1394784,
+      "longitude": 9.5180409,
+      "timestamp": 1762856466182
+    },
+    {
+      "latitude": 47.1394753,
+      "longitude": 9.5180471,
+      "timestamp": 1762856467182
+    },
+    {
+      "latitude": 47.1394729,
+      "longitude": 9.5180519,
+      "timestamp": 1762856468182
+    },
+    {
+      "latitude": 47.1394751,
+      "longitude": 9.5180523,
+      "timestamp": 1762856469182
+    },
+    {
+      "latitude": 47.1394802,
+      "longitude": 9.5180503,
+      "timestamp": 1762856470183
+    },
+    {
+      "latitude": 47.1394829,
+      "longitude": 9.5180477,
+      "timestamp": 1762856471053
+    },
+    {
+      "latitude": 47.1394833,
+      "longitude": 9.5180497,
+      "timestamp": 1762856472183
+    },
+    {
+      "latitude": 47.1394829,
+      "longitude": 9.5180504,
+      "timestamp": 1762856473181
+    },
+    {
+      "latitude": 47.1394836,
+      "longitude": 9.5180492,
+      "timestamp": 1762856474181
+    },
+    {
+      "latitude": 47.1394834,
+      "longitude": 9.5180492,
+      "timestamp": 1762856475182
+    },
+    {
+      "latitude": 47.1394832,
+      "longitude": 9.5180491,
+      "timestamp": 1762856476184
+    },
+    {
+      "latitude": 47.1394843,
+      "longitude": 9.518049,
+      "timestamp": 1762856477183
+    },
+    {
+      "latitude": 47.1394847,
+      "longitude": 9.5180476,
+      "timestamp": 1762856478182
+    },
+    {
+      "latitude": 47.1394863,
+      "longitude": 9.5180468,
+      "timestamp": 1762856479182
+    },
+    {
+      "latitude": 47.1394928,
+      "longitude": 9.5180442,
+      "timestamp": 1762856480183
+    },
+    {
+      "latitude": 47.1394972,
+      "longitude": 9.5180421,
+      "timestamp": 1762856481182
+    },
+    {
+      "latitude": 47.1394995,
+      "longitude": 9.5180408,
+      "timestamp": 1762856482183
+    },
+    {
+      "latitude": 47.1395003,
+      "longitude": 9.5180395,
+      "timestamp": 1762856483183
+    },
+    {
+      "latitude": 47.1394997,
+      "longitude": 9.5180393,
+      "timestamp": 1762856483689
+    },
+    {
+      "latitude": 47.1394985,
+      "longitude": 9.5180379,
+      "timestamp": 1762856484182
+    },
+    {
+      "latitude": 47.1394956,
+      "longitude": 9.5180359,
+      "timestamp": 1762856485110
+    },
+    {
+      "latitude": 47.1394903,
+      "longitude": 9.5180338,
+      "timestamp": 1762856485849
+    },
+    {
+      "latitude": 47.1394846,
+      "longitude": 9.5180306,
+      "timestamp": 1762856486493
+    },
+    {
+      "latitude": 47.1394785,
+      "longitude": 9.5180287,
+      "timestamp": 1762856487182
+    },
+    {
+      "latitude": 47.1394704,
+      "longitude": 9.5180264,
+      "timestamp": 1762856488182
+    },
+    {
+      "latitude": 47.1394669,
+      "longitude": 9.5180241,
+      "timestamp": 1762856489182
+    },
+    {
+      "latitude": 47.1394683,
+      "longitude": 9.5180251,
+      "timestamp": 1762856490182
+    },
+    {
+      "latitude": 47.1394715,
+      "longitude": 9.5180243,
+      "timestamp": 1762856491182
+    },
+    {
+      "latitude": 47.1394734,
+      "longitude": 9.5180221,
+      "timestamp": 1762856492181
+    },
+    {
+      "latitude": 47.1394739,
+      "longitude": 9.5180193,
+      "timestamp": 1762856493181
+    },
+    {
+      "latitude": 47.1394779,
+      "longitude": 9.518024,
+      "timestamp": 1762856494182
+    },
+    {
+      "latitude": 47.1394788,
+      "longitude": 9.5180219,
+      "timestamp": 1762856495182
+    },
+    {
+      "latitude": 47.1394797,
+      "longitude": 9.5180186,
+      "timestamp": 1762856496182
+    },
+    {
+      "latitude": 47.1394802,
+      "longitude": 9.5180169,
+      "timestamp": 1762856497183
+    },
+    {
+      "latitude": 47.1394809,
+      "longitude": 9.5180162,
+      "timestamp": 1762856498182
+    },
+    {
+      "latitude": 47.1394823,
+      "longitude": 9.5180147,
+      "timestamp": 1762856499181
+    },
+    {
+      "latitude": 47.1394833,
+      "longitude": 9.518015,
+      "timestamp": 1762856500182
+    },
+    {
+      "latitude": 47.1394828,
+      "longitude": 9.5180165,
+      "timestamp": 1762856500749
+    },
+    {
+      "latitude": 47.1394899,
+      "longitude": 9.5180268,
+      "timestamp": 1762856502181
+    },
+    {
+      "latitude": 47.1394903,
+      "longitude": 9.5180252,
+      "timestamp": 1762856503181
+    },
+    {
+      "latitude": 47.1394907,
+      "longitude": 9.5180226,
+      "timestamp": 1762856504183
+    },
+    {
+      "latitude": 47.1394918,
+      "longitude": 9.5180208,
+      "timestamp": 1762856505182
+    },
+    {
+      "latitude": 47.1395322,
+      "longitude": 9.5180012,
+      "timestamp": 1762856506182
+    },
+    {
+      "latitude": 47.139544,
+      "longitude": 9.5179949,
+      "timestamp": 1762856507182
+    },
+    {
+      "latitude": 47.1395467,
+      "longitude": 9.517992,
+      "timestamp": 1762856508182
+    },
+    {
+      "latitude": 47.1395481,
+      "longitude": 9.5179912,
+      "timestamp": 1762856509181
+    },
+    {
+      "latitude": 47.1395497,
+      "longitude": 9.5179927,
+      "timestamp": 1762856510183
+    }
+  ],
+  "corners": [
+    {
+      "latitude": 47.13961295777222,
+      "longitude": 9.517771882700623,
+      "timestamp": 1762856428411
+    },
+    {
+      "latitude": 47.13957668540953,
+      "longitude": 9.517805233037345,
+      "timestamp": 1762856449389
+    },
+    {
+      "latitude": 47.13948205348584,
+      "longitude": 9.518046513245386,
+      "timestamp": 1762856479970
+    },
+    {
+      "latitude": 47.13947702117001,
+      "longitude": 9.518021657977291,
+      "timestamp": 1762856501931
+    },
+    {
+      "latitude": 47.13961295777222,
+      "longitude": 9.517771882700623,
+      "timestamp": 1762856510637
+    }
+  ],
+  "cornerDrawing": {
+    "points": [
+      {
+        "x": 16,
+        "y": 231
+      },
+      {
+        "x": 52,
+        "y": 174
+      },
+      {
+        "x": 311,
+        "y": 24
+      },
+      {
+        "x": 285,
+        "y": 16
+      }
+    ],
+    "closed": true,
+    "scale": 0.07038322483026571,
+    "extent": {
+      "minLat": 47.13947702117001,
+      "maxLat": 47.13961295777222,
+      "minLon": 9.517771882700623,
+      "maxLon": 9.518046513245386,
+      "padding": 16,
+      "width": 411.42857142857144,
+      "height": 247
+    }
+  },
+  "metrics": {
+    "perimeter_m": 52.038,
+    "area_m2": 4.046,
+    "closed": true
+  }
+}
