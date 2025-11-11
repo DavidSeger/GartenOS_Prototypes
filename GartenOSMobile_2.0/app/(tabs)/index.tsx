@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, Alert, Platform } from 'react-native';
 import { Camera, CameraView, CameraType } from 'expo-camera';
 import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from 'expo-av';
@@ -185,7 +185,7 @@ export default function App() {
           },
           (pos) => {
             const acc = pos.coords.accuracy ?? 99;
-            if (acc > 0.5) return;
+            if (acc > 10) return;
             const tp: TrackPoint = {
               latitude: pos.coords.latitude,
               longitude: pos.coords.longitude,
