@@ -128,3 +128,30 @@ Helpful flags:
 
 ---
 
+## 6. Recent Enhancements
+
+### 6.1 One-second transcript segments & headings
+- Gemini transcription now requests JSON segments at 1 s granularity (`services/geminiService.ts`).
+- The recorder logs GPS headings per second once a session stops; exports now include a `headings` array aligned with the transcript so downstream tools know which direction the user faced.
+
+### 6.2 ChatGPT object planner
+- `services/objectPlannerService.ts` sends the fixed polygon, transcript segments, and headings to OpenAI (default `gpt-4o`).
+- The model is only allowed to return annotations (objects + coordinates). We clamp those coordinates to the existing polygon and merge them with any user-authored annotations before exporting.
+- Configure the integration via `.env.local`:
+  ```
+  EXPO_PUBLIC_OPENAI_API_KEY=sk-...
+  EXPO_PUBLIC_OPENAI_MODEL=gpt-5
+       # optional override
+  EXPO_PUBLIC_OPENAI_API_URL=https://api.openai.com/v1/chat/completions  # optional
+  ```
+  If the key is missing or the call fails, exports still succeed with the original annotations.
+
+### 6.3 Export payload
+- Exported JSON (`garden-session-*.json`) now contains:
+  - `transcriptSegments`: one entry per second.
+  - `headings`: per-second compass bearings.
+  - `annotations`: merged set of manual + AI-suggested objects.
+  - Existing fields (`corners`, `gpsTrack`, `cornerDrawing`, `metrics`, etc.) remain untouched so GartenOS Expert can consume the file as before.
+
+Keep these updates in mind when testing new builds or sharing exports with the Expert tooling.
+
