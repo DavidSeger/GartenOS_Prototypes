@@ -64,6 +64,7 @@ function normalizeGardenJson(raw: any): GardenJson {
             points: cd.points,                 // <- main change
             closed: !!cd.closed,
             scale: typeof cd.scale === 'number' ? cd.scale : undefined,
+            annotations: Array.isArray(raw.annotations) ? raw.annotations : undefined,
             // carry over extras if you want them around
             transcript: typeof raw.transcript === 'string' ? raw.transcript : undefined,
             videoUri: typeof raw.videoUri === 'string' ? raw.videoUri : undefined,

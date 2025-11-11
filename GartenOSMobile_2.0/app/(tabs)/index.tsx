@@ -15,6 +15,11 @@ import {
   TranscriptionStatus,
   TranscriptSegment,
 } from '../../services/geminiService.ts';
+import {
+  suggestAnnotationsWithChatGPT,
+  HeadingSample,
+  GardenAnnotation,
+} from '../../services/objectPlannerService.ts';
 import { averageCorner, Corner, toMetersProjector, useMetrics } from '../utils/geo.ts';
 
 import HomeScreen from '../../components/HomeScreen.tsx';
@@ -53,7 +58,9 @@ export default function App() {
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [svgSize, setSvgSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
   const [transcriptionStatus, setTranscriptionStatus] = useState<TranscriptionStatus | null>(null);
+  const [rawTranscriptSegments, setRawTranscriptSegments] = useState<TranscriptSegment[]>([]);
   const [transcriptSegments, setTranscriptSegments] = useState<TranscriptSegment[]>([]);
+  const [headings, setHeadings] = useState<HeadingSample[]>([]);
 
   type XY = { x: number; y: number };
   type Annotation = { id: string; type: 'tree' | 'water' | string; x: number; y: number };
@@ -74,6 +81,7 @@ export default function App() {
   const recordingPromiseRef = useRef<Promise<{ uri: string } | undefined> | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const locationWatchRef = useRef<Location.LocationSubscription | null>(null);
+  const recordingStartRef = useRef<number | null>(null);
 
   const metrics = useMetrics(corners);
   const canClosePolygon = Boolean(metrics && corners.length >= 3 && !metrics.closed);
@@ -101,6 +109,27 @@ export default function App() {
       locationWatchRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    if (!transcript || transcript === DEFAULT_TRANSCRIPT_MESSAGE) {
+      setTranscriptSegments([]);
+      return;
+    }
+    const normalized = normalizeTranscriptSegments(rawTranscriptSegments, transcript, recordingSeconds);
+    setTranscriptSegments(normalized);
+  }, [rawTranscriptSegments, transcript, recordingSeconds]);
+
+  useEffect(() => {
+    const startTs = recordingStartRef.current;
+    if (isRecording || !startTs || track.length < 2) {
+      if (!startTs || track.length === 0) {
+        setHeadings([]);
+      }
+      return;
+    }
+    const computed = buildHeadingSeries(track, startTs, recordingSeconds);
+    setHeadings(computed);
+  }, [track, isRecording, recordingSeconds]);
 
   function zoneFillColor(type?: string) {
     const t = (type || '').toLowerCase();
@@ -300,7 +329,9 @@ export default function App() {
     updatePauseSupport();
     setIsPaused(false);
     setTranscript(DEFAULT_TRANSCRIPT_MESSAGE);
+    setRawTranscriptSegments([]);
     setTranscriptSegments([]);
+    setHeadings([]);
     setRecordingSeconds(0);
     setCorners([]);
 
@@ -313,6 +344,7 @@ export default function App() {
     setIsRecording(true);
 
     await configureAudioMode(true);
+    recordingStartRef.current = Date.now();
 
     try {
       startTimer();
@@ -356,8 +388,11 @@ export default function App() {
       setShouldAutoRestart(false);
       setVideoUri(null);
       setTranscript(DEFAULT_TRANSCRIPT_MESSAGE);
+      setRawTranscriptSegments([]);
       setTranscriptSegments([]);
+      setHeadings([]);
       setIsPaused(false);
+      recordingStartRef.current = null;
       startRecording();
     }
   }, [shouldAutoRestart, startRecording]);
@@ -397,7 +432,9 @@ export default function App() {
     await deleteFileIfExists(videoUri);
     setVideoUri(null);
     setTranscript(DEFAULT_TRANSCRIPT_MESSAGE);
+    setRawTranscriptSegments([]);
     setTranscriptSegments([]);
+    setHeadings([]);
     setIsProcessing(false);
     setRecordingSeconds(0);
     stopTimer();
@@ -406,6 +443,7 @@ export default function App() {
     setCorners([]);
     setIsAveragingCorner(false);
     setActiveScreen(Screen.Home);
+    recordingStartRef.current = null;
   }, [configureAudioMode, deleteFileIfExists, stopLocationTracking, stopTimer, videoUri]);
 
   const handleExportGarden = useCallback(
@@ -418,10 +456,21 @@ export default function App() {
         try {
           setIsExporting(true);
           setCornerDrawing(exportData as unknown as CornerDrawing);
+          const transcriptForExport = buildTimestampedTranscript(transcriptSegments, transcript);
+          const aiAnnotations = await planAiAnnotations({
+            layout: exportData,
+            corners,
+            transcriptSegments,
+            headings,
+            existingAnnotations: cornerDrawing?.annotations,
+          });
           const payload = {
             version: 1,
             exportedAt: Date.now(),
-            transcript,
+            transcript: transcriptForExport,
+            transcriptSegments,
+            headings,
+            annotations: aiAnnotations,
             videoUri,
             gpsTrack: track,
             corners,
@@ -460,7 +509,7 @@ export default function App() {
           setIsExporting(false);
         }
       },
-      [corners, metrics, transcript, track, videoUri],
+      [corners, headings, metrics, transcript, transcriptSegments, track, videoUri],
   );
 
   const processTranscription = useCallback(
@@ -472,6 +521,7 @@ export default function App() {
           message: 'Preparing media for transcription...',
         });
         setTranscript('Preparing media for transcription...');
+        setRawTranscriptSegments([]);
         setTranscriptSegments([]);
 
         let cleanupTask: (() => Promise<void>) | undefined;
@@ -491,11 +541,11 @@ export default function App() {
                 setTranscript('Transcribing audio with Gemini... Please wait.');
               }
             },
-            targetSegmentSeconds: 12,
+            targetSegmentSeconds: 1,
           });
 
           setTranscript(result.fullText);
-          setTranscriptSegments(result.segments ?? []);
+          setRawTranscriptSegments(result.segments ?? []);
         } catch (error) {
           console.error('Error during transcription process:', error);
           const message =
@@ -504,6 +554,7 @@ export default function App() {
                   : 'An unknown error occurred during transcription.';
           setTranscriptionStatus(null);
           setTranscript(message);
+          setRawTranscriptSegments([]);
           setTranscriptSegments([]);
         } finally {
           setIsProcessing(false);
@@ -517,7 +568,7 @@ export default function App() {
           }
         }
       },
-      [prepareMediaForTranscription, transcribeMediaViaFileApiTimestamped],
+      [prepareMediaForTranscription, recordingSeconds, transcribeMediaViaFileApiTimestamped],
   );
 
   useEffect(() => {
@@ -536,7 +587,10 @@ export default function App() {
     setIsPaused(false);
     setVideoUri(null);
     setTranscript(DEFAULT_TRANSCRIPT_MESSAGE);
+    setRawTranscriptSegments([]);
     setTranscriptSegments([]);
+    setHeadings([]);
+    recordingStartRef.current = null;
     setActiveScreen(Screen.Recording);
     setShouldAutoRestart(true);
   }, [deleteFileIfExists, videoUri]);
@@ -778,4 +832,228 @@ export default function App() {
         </StyledView>
       </StyledSafeAreaView>
   );
+}
+
+function formatTimestampLabel(totalSeconds: number): string {
+  if (!Number.isFinite(totalSeconds)) {
+    return '0:00';
+  }
+  const clamped = Math.max(0, Math.round(totalSeconds));
+  const minutes = Math.floor(clamped / 60);
+  const seconds = String(clamped % 60).padStart(2, '0');
+  return `${minutes}:${seconds}`;
+}
+
+function normalizeTranscriptSegments(
+    rawSegments: TranscriptSegment[] | undefined,
+    fallbackText: string,
+    durationSeconds: number,
+): TranscriptSegment[] {
+  const cleaned = (rawSegments ?? [])
+      .map((segment) => {
+        const start = Number.isFinite(segment.start_s) ? segment.start_s : Number(segment.start_s) || 0;
+        const endCandidate = Number.isFinite(segment.end_s) ? segment.end_s : Number(segment.end_s);
+        const end = typeof endCandidate === 'number' && Number.isFinite(endCandidate) && endCandidate >= start
+            ? endCandidate
+            : start;
+        const text = segment.text?.trim?.() ?? '';
+        return { start_s: start, end_s: end, text };
+      })
+      .filter((segment) => segment.text.length > 0)
+      .sort((a, b) => a.start_s - b.start_s);
+
+  if (cleaned.length > 0) {
+    return cleaned;
+  }
+
+  const trimmedTranscript = fallbackText?.trim?.() ?? '';
+  if (!trimmedTranscript) {
+    return cleaned;
+  }
+
+  const approxDuration = durationSeconds && durationSeconds > 0
+      ? durationSeconds
+      : Math.max(1, Math.ceil(trimmedTranscript.length / 6));
+  const totalSeconds = Math.max(1, Math.ceil(approxDuration));
+  const words = trimmedTranscript.split(/\s+/).filter(Boolean);
+  if (!words.length) {
+    return cleaned;
+  }
+
+  const wordsPerSecond = words.length / totalSeconds;
+  const segments: TranscriptSegment[] = [];
+  let cursor = 0;
+  for (let second = 0; second < totalSeconds; second += 1) {
+    const targetCursor = second === totalSeconds - 1
+        ? words.length
+        : Math.min(words.length, Math.round((second + 1) * wordsPerSecond));
+    if (targetCursor <= cursor) {
+      continue;
+    }
+    const text = words.slice(cursor, targetCursor).join(' ').trim();
+    if (text.length === 0) {
+      cursor = targetCursor;
+      continue;
+    }
+    segments.push({
+      start_s: second,
+      end_s: second + 1,
+      text,
+    });
+    cursor = targetCursor;
+  }
+
+  return segments;
+}
+
+function buildTimestampedTranscript(
+    segments: TranscriptSegment[] | undefined,
+    fallbackText: string,
+): string {
+  if (!segments?.length) {
+    return fallbackText;
+  }
+  const lines = segments
+      .map((segment) => {
+        const text = segment.text?.trim?.() ?? '';
+        if (!text) {
+          return null;
+        }
+        return `[${formatTimestampLabel(segment.start_s ?? 0)}] ${text}`;
+      })
+      .filter((line): line is string => Boolean(line));
+
+  return lines.length ? lines.join('\n') : fallbackText;
+}
+
+type AiPlanArgs = {
+  layout: CornerExportData;
+  corners: Corner[];
+  transcriptSegments: TranscriptSegment[];
+  headings: HeadingSample[];
+  existingAnnotations?: GardenAnnotation[];
+};
+
+async function planAiAnnotations(args: AiPlanArgs): Promise<GardenAnnotation[]> {
+  const { layout, transcriptSegments, headings, corners, existingAnnotations } = args;
+  if (!layout?.points?.length || !transcriptSegments.length) {
+    return existingAnnotations ?? [];
+  }
+
+  try {
+    const aiObjects = await suggestAnnotationsWithChatGPT({
+      layout: {
+        points: layout.points,
+        closed: layout.closed,
+        scale: layout.scale,
+        extent: layout.extent,
+      },
+      corners: corners.map((corner) => ({
+        latitude: corner.latitude,
+        longitude: corner.longitude,
+      })),
+      transcriptSegments,
+      headings,
+      existingAnnotations,
+    });
+    const normalized = normalizeAnnotationsForLayout(aiObjects, layout);
+    return [...(existingAnnotations ?? []), ...normalized];
+  } catch (error) {
+    console.warn('AI object placement failed', error);
+    return existingAnnotations ?? [];
+  }
+}
+
+function normalizeAnnotationsForLayout(
+    annotations: GardenAnnotation[] | undefined,
+    layout: CornerExportData,
+): GardenAnnotation[] {
+  if (!annotations?.length) {
+    return [];
+  }
+  if (!layout.points?.length) {
+    return [];
+  }
+  let minX = layout.points[0].x;
+  let maxX = layout.points[0].x;
+  let minY = layout.points[0].y;
+  let maxY = layout.points[0].y;
+  for (const pt of layout.points) {
+    if (pt.x < minX) minX = pt.x;
+    if (pt.x > maxX) maxX = pt.x;
+    if (pt.y < minY) minY = pt.y;
+    if (pt.y > maxY) maxY = pt.y;
+  }
+  return annotations.map((ann) => ({
+    id: ann.id ?? createAnnotationId(),
+    type: ann.type?.trim() || 'unknown',
+    label: ann.label?.trim(),
+    confidence: ann.confidence,
+    x: clampNumber(ann.x, minX, maxX),
+    y: clampNumber(ann.y, minY, maxY),
+  }));
+}
+
+function clampNumber(value: number, min: number, max: number) {
+  if (!Number.isFinite(value)) {
+    return min;
+  }
+  return Math.min(Math.max(value, min), max);
+}
+
+function createAnnotationId() {
+  return Math.random().toString(36).slice(2, 9);
+}
+
+function buildHeadingSeries(
+    track: TrackPoint[],
+    startTimestamp: number,
+    recordingSeconds: number,
+): HeadingSample[] {
+  if (!track.length) {
+    return [];
+  }
+
+  const headingPerSecond = new Map<number, number>();
+  for (let i = 0; i < track.length - 1; i += 1) {
+    const current = track[i];
+    const next = track[i + 1];
+    if (!current || !next) {
+      continue;
+    }
+    const heading = computeHeadingDegrees(current, next);
+    const second = Math.max(0, Math.floor((current.timestamp - startTimestamp) / 1000));
+    if (!headingPerSecond.has(second)) {
+      headingPerSecond.set(second, heading);
+    }
+  }
+
+  const lastTimestamp = track[track.length - 1]?.timestamp ?? startTimestamp;
+  const derivedDuration = Math.max(0, Math.floor((lastTimestamp - startTimestamp) / 1000) + 1);
+  const totalSeconds = Math.max(recordingSeconds, derivedDuration);
+
+  const results: HeadingSample[] = [];
+  let lastHeading: number | null = headingPerSecond.get(0) ?? null;
+  for (let second = 0; second < totalSeconds; second += 1) {
+    if (headingPerSecond.has(second)) {
+      lastHeading = headingPerSecond.get(second)!;
+    }
+    if (lastHeading == null) {
+      continue;
+    }
+    results.push({ second, heading_deg: Number(lastHeading.toFixed(2)) });
+  }
+
+  return results;
+}
+
+function computeHeadingDegrees(a: TrackPoint, b: TrackPoint): number {
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const phi1 = toRad(a.latitude);
+  const phi2 = toRad(b.latitude);
+  const deltaLambda = toRad(b.longitude - a.longitude);
+  const y = Math.sin(deltaLambda) * Math.cos(phi2);
+  const x = Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(deltaLambda);
+  const theta = Math.atan2(y, x);
+  return (((theta * 180) / Math.PI) + 360) % 360;
 }

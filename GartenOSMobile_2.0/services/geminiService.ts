@@ -169,12 +169,21 @@ async function requestTranscriptSegments(
   parts: Array<Record<string, unknown>>,
   opts: { targetSegmentSeconds?: number } = {},
 ): Promise<TranscriptResult> {
-  const targetSeconds = opts.targetSegmentSeconds && opts.targetSegmentSeconds > 0 ? opts.targetSegmentSeconds : 12;
-  const instruction =
-    `Transcribe this garden walkthrough. Respond with strict JSON using this schema: ` +
-    `{"fullText": string, "segments": [{"start_s": number, "end_s": number, "text": string}]}. ` +
-    `Make segments sequential, non-overlapping, and roughly ${targetSeconds}-second chunks. ` +
-    `start_s and end_s must be seconds from the beginning of the media. Return only JSON.`;
+  const defaultTargetSeconds = 1;
+  const targetSeconds =
+    opts.targetSegmentSeconds && opts.targetSegmentSeconds > 0
+      ? opts.targetSegmentSeconds
+      : defaultTargetSeconds;
+  const instruction = [
+    'Transcribe this garden walkthrough and respond with STRICT JSON matching this schema:',
+    '{"fullText": string, "segments": [{"start_s": number, "end_s": number, "text": string}]}.',
+    'Rules:',
+    '1) start_s must be the integer second (0,1,2,...) when the words in that segment begin.',
+    `2) end_s must equal start_s + duration where duration <= ${targetSeconds.toFixed(0)} second.`,
+    '3) Provide at most one segment per second; skip seconds with no speech.',
+    '4) Segments must be sequential, non-overlapping, and include only the words spoken within that second.',
+    'Return JSON ONLY with no commentary.',
+  ].join(' ');
 
   const response = await geminiRequest(
     `/${MODEL_NAME}:generateContent`,

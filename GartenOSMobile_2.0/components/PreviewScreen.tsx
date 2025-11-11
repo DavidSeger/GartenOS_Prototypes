@@ -66,55 +66,7 @@ const PreviewScreen: React.FC<PreviewScreenProps> = ({
     const seconds = Math.floor(durationSeconds % 60);
     return `${minutes}:${String(seconds).padStart(2, '0')}`;
   }, [durationSeconds]);
-  const derivedSegments = React.useMemo(() => {
-    const cleaned = (transcriptSegments ?? [])
-      .map((segment) => {
-        const start = Number.isFinite(segment.start_s) ? segment.start_s : Number(segment.start_s) || 0;
-        const endCandidate = Number.isFinite(segment.end_s) ? segment.end_s : Number(segment.end_s) || start;
-        const end = endCandidate >= start ? endCandidate : start;
-        const text = segment.text?.trim?.() ?? '';
-        return { start_s: start, end_s: end, text };
-      })
-      .filter((segment) => segment.text.length > 0)
-      .sort((a, b) => a.start_s - b.start_s);
-
-    const hasMeaningfulSegments = cleaned.some((segment) => segment.end_s > segment.start_s + 0.5);
-    if (cleaned.length > 1 || hasMeaningfulSegments) {
-      return cleaned;
-    }
-
-    if (!transcript || !transcript.trim()) {
-      return [];
-    }
-
-    const approxDuration = durationSeconds && durationSeconds > 0 ? durationSeconds : Math.max(30, transcript.length / 6);
-    const chunks = transcript
-      .replace(/\r/g, '')
-      .split(/\n+/)
-      .flatMap((block) => block.match(/[^.!?]+[.!?]?/g) || [])
-      .map((chunk) => chunk.trim())
-      .filter(Boolean);
-
-    if (!chunks.length) {
-      return [];
-    }
-
-    const tokenCounts = chunks.map((chunk) => (chunk.match(/\S+/g) || []).length || 1);
-    const totalTokens = tokenCounts.reduce((sum, count) => sum + count, 0) || 1;
-
-    let elapsed = 0;
-    return chunks.map((chunk, index) => {
-      const share = tokenCounts[index] / totalTokens;
-      const remaining = Math.max(0, approxDuration - elapsed);
-      const idealDuration = approxDuration * share;
-      const chunkDuration = index === chunks.length - 1 ? remaining : Math.max(2, idealDuration);
-      const start = elapsed;
-      const end = Math.min(approxDuration, start + chunkDuration);
-      elapsed = end;
-      return { start_s: start, end_s: end, text: chunk };
-    });
-  }, [transcriptSegments, transcript, durationSeconds]);
-  const hasSegments = derivedSegments.length > 0;
+  const hasSegments = transcriptSegments.length > 0;
   const statusMessage = React.useMemo(() => {
     if (!isProcessing || !transcriptionStatus) {
       return 'Preparing transcript...';
@@ -243,7 +195,7 @@ const PreviewScreen: React.FC<PreviewScreenProps> = ({
           ) : (
             <>
               {hasSegments ? (
-                derivedSegments.map((segment, idx) => (
+                transcriptSegments.map((segment, idx) => (
                   <StyledView key={`${segment.start_s}-${idx}`} className="flex-row items-start mb-1">
                     <StyledText className="text-[11px] text-gray-600 w-14">
                       [{formatTimecode(segment.start_s)}]
