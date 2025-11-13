@@ -681,6 +681,11 @@ export default function App() {
                 isExporting={isExporting}
                 onExport={handleExportGarden}
                 durationSeconds={recordingSeconds}
+                onRetranscribe={() => {
+                  if (videoUri && !isProcessing) {
+                    processTranscription(videoUri);
+                  }
+                }}
             />
         );
       case Screen.Measurement:
