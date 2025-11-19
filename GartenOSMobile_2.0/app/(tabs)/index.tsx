@@ -17,6 +17,7 @@ import {
 } from '../../services/geminiService.ts';
 import {
   suggestAnnotationsWithChatGPT,
+  editAnnotationsWithChatGPT,
   HeadingSample,
   GardenAnnotation,
 } from '../../services/objectPlannerService.ts';
@@ -34,6 +35,7 @@ const StyledSafeAreaView = styled(SafeAreaView);
 const StyledView = styled(View);
 const DEFAULT_TRANSCRIPT_MESSAGE =
     'The auto-generated transcript will appear here after recording.';
+const EDIT_AUDIO_MIME_TYPE = 'audio/m4a';
 type CameraViewInstance = React.ComponentRef<typeof CameraView>;
 type TrackPoint = { latitude: number; longitude: number; timestamp: number };
 
@@ -58,6 +60,8 @@ export default function App() {
   const [rawTranscriptSegments, setRawTranscriptSegments] = useState<TranscriptSegment[]>([]);
   const [transcriptSegments, setTranscriptSegments] = useState<TranscriptSegment[]>([]);
   const [headings, setHeadings] = useState<HeadingSample[]>([]);
+  const [isRecordingAnnotationEdit, setIsRecordingAnnotationEdit] = useState(false);
+  const [annotationEditStatus, setAnnotationEditStatus] = useState<string | null>(null);
 
   const cameraRef = useRef<CameraViewInstance | null>(null);
   const recordingPromiseRef = useRef<Promise<{ uri: string } | undefined> | null>(null);
@@ -66,6 +70,7 @@ export default function App() {
   const recordingStartRef = useRef<number | null>(null);
   const layoutSignatureRef = useRef<string | null>(null);
   const aiPlanSignatureRef = useRef<string | null>(null);
+  const editRecordingRef = useRef<Audio.Recording | null>(null);
 
   const metrics = useMetrics(corners);
   const exportData = useCornerExportData(corners, metrics);
@@ -99,6 +104,15 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    return () => {
+      if (editRecordingRef.current) {
+        editRecordingRef.current.stopAndUnloadAsync().catch(() => undefined);
+        editRecordingRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (!transcript || transcript === DEFAULT_TRANSCRIPT_MESSAGE) {
       setTranscriptSegments([]);
       return;
@@ -114,6 +128,12 @@ export default function App() {
       setAiAnnotations([]);
       setAiPlanStatus('idle');
       setAiPlanError(null);
+      if (editRecordingRef.current) {
+        editRecordingRef.current.stopAndUnloadAsync().catch(() => undefined);
+        editRecordingRef.current = null;
+      }
+      setIsRecordingAnnotationEdit(false);
+      setAnnotationEditStatus(null);
       return;
     }
     const layoutSig = buildLayoutSignature(exportData);
@@ -123,6 +143,12 @@ export default function App() {
       setAiAnnotations([]);
       setAiPlanStatus('idle');
       setAiPlanError(null);
+      if (editRecordingRef.current) {
+        editRecordingRef.current.stopAndUnloadAsync().catch(() => undefined);
+        editRecordingRef.current = null;
+      }
+      setIsRecordingAnnotationEdit(false);
+      setAnnotationEditStatus(null);
     }
   }, [exportData]);
 
@@ -489,6 +515,12 @@ export default function App() {
     setTrack([]);
     setCorners([]);
     setIsAveragingCorner(false);
+    if (editRecordingRef.current) {
+      editRecordingRef.current.stopAndUnloadAsync().catch(() => undefined);
+      editRecordingRef.current = null;
+    }
+    setIsRecordingAnnotationEdit(false);
+    setAnnotationEditStatus(null);
     setAiAnnotations([]);
     setAiPlanStatus('idle');
     setAiPlanError(null);
@@ -648,6 +680,12 @@ export default function App() {
     setRawTranscriptSegments([]);
     setTranscriptSegments([]);
     setHeadings([]);
+    if (editRecordingRef.current) {
+      editRecordingRef.current.stopAndUnloadAsync().catch(() => undefined);
+      editRecordingRef.current = null;
+    }
+    setIsRecordingAnnotationEdit(false);
+    setAnnotationEditStatus(null);
     setAiAnnotations([]);
     setAiPlanStatus('idle');
     setAiPlanError(null);
@@ -674,6 +712,126 @@ export default function App() {
     document.body.removeChild(anchor);
     URL.revokeObjectURL(objectUrl);
   }, [videoUri]);
+
+  const applyAnnotationEditFromAudio = useCallback(
+      async (audioUri: string) => {
+        if (!exportData) {
+          setAnnotationEditStatus('Add at least two corners before editing placements.');
+          await deleteFileIfExists(audioUri);
+          return;
+        }
+        try {
+          setAnnotationEditStatus('Transcribing edit instructions...');
+          const transcriptResult = await transcribeMediaViaFileApiTimestamped({
+            fileUri: audioUri,
+            mimeType: EDIT_AUDIO_MIME_TYPE,
+            targetSegmentSeconds: 3,
+          });
+          const editTranscript = transcriptResult.fullText?.trim();
+          if (!editTranscript) {
+            setAnnotationEditStatus('Could not understand the edit request. Please try again.');
+            return;
+          }
+          setAnnotationEditStatus('Updating map with ChatGPT...');
+          setAiPlanStatus('planning');
+          const updated = await editAiAnnotations({
+            layout: exportData,
+            corners,
+            transcriptSegments,
+            headings,
+            existingAnnotations: aiAnnotations,
+            editTranscript,
+          });
+          setAiAnnotations(updated);
+          aiPlanSignatureRef.current = buildAiPlanSignature(exportData, transcriptSegments, headings);
+          setAiPlanStatus('ready');
+          setAiPlanError(null);
+          setAnnotationEditStatus('Edits applied.');
+        } catch (error) {
+          const message =
+              error instanceof Error ? error.message : 'Failed to apply edit instructions.';
+          console.error('Annotation edit failed', error);
+          setAnnotationEditStatus(message);
+          setAiPlanStatus('error');
+          setAiPlanError(message);
+          Alert.alert('Annotation edit failed', message);
+        } finally {
+          await deleteFileIfExists(audioUri);
+        }
+      },
+      [aiAnnotations, corners, deleteFileIfExists, exportData, headings, transcriptSegments],
+  );
+
+  const startAnnotationEditRecording = useCallback(async () => {
+    if (isRecordingAnnotationEdit) {
+      return;
+    }
+    if (!exportData) {
+      Alert.alert('Map not ready', 'Add at least two corners before editing object placements.');
+      return;
+    }
+    if (isProcessing) {
+      Alert.alert('Please wait', 'Finish transcription before editing placements.');
+      return;
+    }
+    try {
+      const permission = await Audio.requestPermissionsAsync?.();
+      if (permission && !permission.granted) {
+        Alert.alert('Microphone denied', 'Enable microphone access to record edit instructions.');
+        return;
+      }
+      setAnnotationEditStatus('Recording edit instructions... Tap again to finish.');
+      await configureAudioMode(true);
+      const recording = new Audio.Recording();
+      await recording.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      await recording.startAsync();
+      editRecordingRef.current = recording;
+      setIsRecordingAnnotationEdit(true);
+      Alert.alert(
+          'Recording edits',
+          'Describe what should change, then tap "Edit object placements" again to finish.',
+      );
+    } catch (error) {
+      console.warn('Unable to start annotation edit recording', error);
+      setAnnotationEditStatus('Unable to start recording edit instructions.');
+      await configureAudioMode(false);
+    }
+  }, [configureAudioMode, exportData, isProcessing, isRecordingAnnotationEdit]);
+
+  const finishAnnotationEditRecording = useCallback(async () => {
+    const recording = editRecordingRef.current;
+    if (!recording) {
+      setIsRecordingAnnotationEdit(false);
+      return;
+    }
+    try {
+      setAnnotationEditStatus('Processing edit instructions...');
+      await recording.stopAndUnloadAsync();
+      const uri = recording.getURI();
+      editRecordingRef.current = null;
+      setIsRecordingAnnotationEdit(false);
+      await configureAudioMode(false);
+      if (!uri) {
+        setAnnotationEditStatus('No audio captured. Please try again.');
+        return;
+      }
+      await applyAnnotationEditFromAudio(uri);
+    } catch (error) {
+      console.error('Unable to finish annotation edit recording', error);
+      setAnnotationEditStatus('Unable to process the edit recording.');
+      editRecordingRef.current = null;
+      setIsRecordingAnnotationEdit(false);
+      await configureAudioMode(false);
+    }
+  }, [applyAnnotationEditFromAudio, configureAudioMode]);
+
+  const handleAnnotationEditRequest = useCallback(async () => {
+    if (isRecordingAnnotationEdit) {
+      await finishAnnotationEditRecording();
+    } else {
+      await startAnnotationEditRecording();
+    }
+  }, [finishAnnotationEditRecording, isRecordingAnnotationEdit, startAnnotationEditRecording]);
 
   if (hasPermission === null) {
     return <View />;
@@ -722,6 +880,9 @@ export default function App() {
                 annotations={aiAnnotations}
                 aiPlanStatus={aiPlanStatus}
                 aiPlanError={aiPlanError}
+                onAnnotationEdit={handleAnnotationEditRequest}
+                isAnnotationEditRecording={isRecordingAnnotationEdit}
+                annotationEditStatus={annotationEditStatus}
                 onRetranscribe={() => {
                   if (videoUri && !isProcessing) {
                     processTranscription(videoUri);
@@ -956,6 +1117,45 @@ async function planAiAnnotations(args: AiPlanArgs): Promise<GardenAnnotation[]> 
     return [...(existingAnnotations ?? []), ...normalized];
   } catch (error) {
     console.warn('AI object placement failed', error);
+    return existingAnnotations ?? [];
+  }
+}
+
+type AiEditArgs = AiPlanArgs & {
+  editTranscript: string;
+};
+
+async function editAiAnnotations(args: AiEditArgs): Promise<GardenAnnotation[]> {
+  const { layout, corners, transcriptSegments, headings, existingAnnotations, editTranscript } = args;
+  if (!layout?.points?.length) {
+    return existingAnnotations ?? [];
+  }
+  if (!editTranscript?.trim()) {
+    return existingAnnotations ?? [];
+  }
+
+  try {
+    const aiObjects = await editAnnotationsWithChatGPT(
+        {
+          layout: {
+            points: layout.points,
+            closed: layout.closed,
+            scale: layout.scale,
+            extent: layout.extent,
+          },
+          corners: corners.map((corner) => ({
+            latitude: corner.latitude,
+            longitude: corner.longitude,
+          })),
+          transcriptSegments,
+          headings,
+          existingAnnotations,
+        },
+        editTranscript,
+    );
+    return normalizeAnnotationsForLayout(aiObjects, layout);
+  } catch (error) {
+    console.warn('AI object edit failed', error);
     return existingAnnotations ?? [];
   }
 }

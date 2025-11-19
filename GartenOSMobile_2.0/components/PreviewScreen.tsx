@@ -38,6 +38,9 @@ interface PreviewScreenProps {
   aiPlanStatus: AiPlanStatus;
   aiPlanError: string | null;
   annotations: GardenAnnotation[];
+  onAnnotationEdit: () => void;
+  isAnnotationEditRecording: boolean;
+  annotationEditStatus: string | null;
 }
 
 const PreviewScreen: React.FC<PreviewScreenProps> = ({
@@ -61,6 +64,9 @@ const PreviewScreen: React.FC<PreviewScreenProps> = ({
                                                        aiPlanStatus,
                                                        aiPlanError,
                                                        annotations,
+                                                       onAnnotationEdit,
+                                                       isAnnotationEditRecording,
+                                                       annotationEditStatus,
                                                      }) => {
   const video = React.useRef<Video | null>(null);
   const exportReady = Boolean(exportData && metrics);
@@ -116,6 +122,8 @@ const PreviewScreen: React.FC<PreviewScreenProps> = ({
     }
   }, [aiPlanStatus, aiPlanError]);
 
+  const editButtonDisabled = !isAnnotationEditRecording && (!exportReady || isExporting || isProcessing);
+
   return (
       <ScrollView>
         <StyledView className="p-5 items-center">
@@ -164,6 +172,22 @@ const PreviewScreen: React.FC<PreviewScreenProps> = ({
                 </StyledText>
             )}
           </StyledView>
+          <StyledTouchableOpacity
+              onPress={onAnnotationEdit}
+              className={`px-4 py-3 rounded-lg w-full mt-2 border ${
+                isAnnotationEditRecording ? 'bg-amber-50 border-amber-400' : 'bg-white border-green-200'
+              }`}
+              activeOpacity={0.7}
+              disabled={editButtonDisabled}
+              style={{ opacity: editButtonDisabled ? 0.6 : 1 }}
+          >
+            <StyledText className="text-green-800 text-base font-semibold text-center">
+              {isAnnotationEditRecording ? 'Finish edit recording' : 'Edit object placements'}
+            </StyledText>
+          </StyledTouchableOpacity>
+          {annotationEditStatus ? (
+              <StyledText className="text-xs text-gray-600 mt-1 text-center">{annotationEditStatus}</StyledText>
+          ) : null}
 
           <StyledView className="flex-row gap-2 justify-center mt-3 w-full">
             <StyledTouchableOpacity
