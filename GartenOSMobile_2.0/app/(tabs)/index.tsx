@@ -28,9 +28,7 @@ import PreviewScreen from '../../components/PreviewScreen.tsx';
 import MeasurementScreen from '../../components/MeasurementScreen.tsx';
 import CertScreen from '../../components/CertScreen.tsx';
 import SubmittedScreen from '../../components/SubmittedScreen.tsx';
-import { CornerExportData } from '../../components/CornersMap.tsx';
-import { getAnnotationIcon } from '../../components/MapIcons.tsx';
-import Svg, { G, Polygon, Polyline, Circle, Text as SvgText } from 'react-native-svg';
+import { CornerExportData, useCornerExportData } from '../../components/CornersMap.tsx';
 
 const StyledSafeAreaView = styled(SafeAreaView);
 const StyledView = styled(View);
@@ -56,34 +54,24 @@ export default function App() {
   const [corners, setCorners] = useState<Corner[]>([]);
   const [isAveragingCorner, setIsAveragingCorner] = useState<boolean>(false);
   const [isExporting, setIsExporting] = useState<boolean>(false);
-  const [svgSize, setSvgSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
   const [transcriptionStatus, setTranscriptionStatus] = useState<TranscriptionStatus | null>(null);
   const [rawTranscriptSegments, setRawTranscriptSegments] = useState<TranscriptSegment[]>([]);
   const [transcriptSegments, setTranscriptSegments] = useState<TranscriptSegment[]>([]);
   const [headings, setHeadings] = useState<HeadingSample[]>([]);
-
-  type XY = { x: number; y: number };
-  type Annotation = { id: string; type: 'tree' | 'water' | string; x: number; y: number };
-  type Zone = { id: string; type?: string; points: XY[] };
-
-  type CornerDrawing = {
-    points: XY[];
-    closed?: boolean;
-    annotations?: Annotation[];
-    zones?: Zone[];
-    scale?: number;
-    unit?: string;
-  };
-
-  const [cornerDrawing, setCornerDrawing] = useState<CornerDrawing | null>(null);
 
   const cameraRef = useRef<CameraViewInstance | null>(null);
   const recordingPromiseRef = useRef<Promise<{ uri: string } | undefined> | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const locationWatchRef = useRef<Location.LocationSubscription | null>(null);
   const recordingStartRef = useRef<number | null>(null);
+  const layoutSignatureRef = useRef<string | null>(null);
+  const aiPlanSignatureRef = useRef<string | null>(null);
 
   const metrics = useMetrics(corners);
+  const exportData = useCornerExportData(corners, metrics);
+  const [aiAnnotations, setAiAnnotations] = useState<GardenAnnotation[]>([]);
+  const [aiPlanStatus, setAiPlanStatus] = useState<'idle' | 'planning' | 'ready' | 'error'>('idle');
+  const [aiPlanError, setAiPlanError] = useState<string | null>(null);
   const canClosePolygon = Boolean(metrics && corners.length >= 3 && !metrics.closed);
 
   useEffect(() => {
@@ -120,6 +108,35 @@ export default function App() {
   }, [rawTranscriptSegments, transcript, recordingSeconds]);
 
   useEffect(() => {
+    if (!exportData) {
+      layoutSignatureRef.current = null;
+      aiPlanSignatureRef.current = null;
+      setAiAnnotations([]);
+      setAiPlanStatus('idle');
+      setAiPlanError(null);
+      return;
+    }
+    const layoutSig = buildLayoutSignature(exportData);
+    if (layoutSignatureRef.current !== layoutSig) {
+      layoutSignatureRef.current = layoutSig;
+      aiPlanSignatureRef.current = null;
+      setAiAnnotations([]);
+      setAiPlanStatus('idle');
+      setAiPlanError(null);
+    }
+  }, [exportData]);
+
+  useEffect(() => {
+    if (!transcriptSegments.length) {
+      aiPlanSignatureRef.current = null;
+      if (!isProcessing) {
+        setAiPlanStatus('idle');
+        setAiPlanError(null);
+      }
+    }
+  }, [transcriptSegments.length, isProcessing]);
+
+  useEffect(() => {
     const startTs = recordingStartRef.current;
     if (isRecording || !startTs || track.length < 2) {
       if (!startTs || track.length === 0) {
@@ -131,20 +148,50 @@ export default function App() {
     setHeadings(computed);
   }, [track, isRecording, recordingSeconds]);
 
-  function zoneFillColor(type?: string) {
-    const t = (type || '').toLowerCase();
-    if (t === 'soil') return '#8B5A2B';
-    if (t === 'grass') return '#2E8B57';
-    if (t === 'concrete') return '#9E9E9E';
-    return '#888888';
-  }
-  function zoneStrokeColor(type?: string) {
-    const t = (type || '').toLowerCase();
-    if (t === 'soil') return '#5E3B1C';
-    if (t === 'grass') return '#1F5E3B';
-    if (t === 'concrete') return '#707070';
-    return '#666666';
-  }
+  useEffect(() => {
+    if (
+        activeScreen !== Screen.Preview ||
+        !exportData ||
+        !transcriptSegments.length ||
+        isProcessing
+    ) {
+      return;
+    }
+    const signature = buildAiPlanSignature(exportData, transcriptSegments, headings);
+    if (aiPlanSignatureRef.current === signature) {
+      return;
+    }
+    let isCancelled = false;
+    setAiPlanStatus('planning');
+    setAiPlanError(null);
+    planAiAnnotations({
+      layout: exportData,
+      transcriptSegments,
+      headings,
+      corners,
+    })
+        .then((annotations) => {
+          if (isCancelled) {
+            return;
+          }
+          setAiAnnotations(annotations);
+          aiPlanSignatureRef.current = signature;
+          setAiPlanStatus('ready');
+        })
+        .catch((error) => {
+          if (isCancelled) {
+            return;
+          }
+          const message =
+              error instanceof Error ? error.message : 'Unable to interpret the walkthrough.';
+          setAiPlanError(message);
+          setAiPlanStatus('error');
+        });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [activeScreen, corners, exportData, headings, isProcessing, transcriptSegments]);
 
   const startTimer = useCallback(() => {
     if (timerRef.current) {
@@ -442,6 +489,11 @@ export default function App() {
     setTrack([]);
     setCorners([]);
     setIsAveragingCorner(false);
+    setAiAnnotations([]);
+    setAiPlanStatus('idle');
+    setAiPlanError(null);
+    layoutSignatureRef.current = null;
+    aiPlanSignatureRef.current = null;
     setActiveScreen(Screen.Home);
     recordingStartRef.current = null;
   }, [configureAudioMode, deleteFileIfExists, stopLocationTracking, stopTimer, videoUri]);
@@ -455,22 +507,28 @@ export default function App() {
 
         try {
           setIsExporting(true);
-          setCornerDrawing(exportData as unknown as CornerDrawing);
           const transcriptForExport = buildTimestampedTranscript(transcriptSegments, transcript);
-          const aiAnnotations = await planAiAnnotations({
-            layout: exportData,
-            corners,
-            transcriptSegments,
-            headings,
-            existingAnnotations: cornerDrawing?.annotations,
-          });
+          let annotationsForExport = aiAnnotations;
+          if (!annotationsForExport?.length) {
+            annotationsForExport = await planAiAnnotations({
+              layout: exportData,
+              corners,
+              transcriptSegments,
+              headings,
+            });
+            setAiAnnotations(annotationsForExport);
+            const signature = buildAiPlanSignature(exportData, transcriptSegments, headings);
+            aiPlanSignatureRef.current = signature;
+            setAiPlanStatus('ready');
+            setAiPlanError(null);
+          }
           const payload = {
             version: 1,
             exportedAt: Date.now(),
             transcript: transcriptForExport,
             transcriptSegments,
             headings,
-            annotations: aiAnnotations,
+            annotations: annotationsForExport ?? [],
             videoUri,
             gpsTrack: track,
             corners,
@@ -509,7 +567,7 @@ export default function App() {
           setIsExporting(false);
         }
       },
-      [corners, headings, metrics, transcript, transcriptSegments, track, videoUri],
+      [aiAnnotations, corners, headings, metrics, transcript, transcriptSegments, track, videoUri],
   );
 
   const processTranscription = useCallback(
@@ -590,6 +648,11 @@ export default function App() {
     setRawTranscriptSegments([]);
     setTranscriptSegments([]);
     setHeadings([]);
+    setAiAnnotations([]);
+    setAiPlanStatus('idle');
+    setAiPlanError(null);
+    layoutSignatureRef.current = null;
+    aiPlanSignatureRef.current = null;
     recordingStartRef.current = null;
     setActiveScreen(Screen.Recording);
     setShouldAutoRestart(true);
@@ -617,31 +680,6 @@ export default function App() {
   }
   if (hasPermission === false) {
     return <Text>No access to camera</Text>;
-  }
-
-  function fitToView(
-      pts: XY[],
-      width: number,
-      height: number,
-      padding = 12
-  ) {
-    if (!pts.length) return { toFit: (p: XY) => p, fittedPts: pts };
-    let minX = pts[0].x, minY = pts[0].y, maxX = pts[0].x, maxY = pts[0].y;
-    for (const p of pts) {
-      if (p.x < minX) minX = p.x;
-      if (p.y < minY) minY = p.y;
-      if (p.x > maxX) maxX = p.x;
-      if (p.y > maxY) maxY = p.y;
-    }
-    const w = Math.max(1, maxX - minX);
-    const h = Math.max(1, maxY - minY);
-    const sx = (width - 2 * padding) / w;
-    const sy = (height - 2 * padding) / h;
-    const s = Math.min(sx, sy);
-    const tx = -minX * s + padding;
-    const ty = -minY * s + padding;
-    const toFit = (p: XY) => ({ x: p.x * s + tx, y: p.y * s + ty });
-    return { toFit, fittedPts: pts.map(toFit) };
   }
 
   const renderScreen = () => {
@@ -673,14 +711,17 @@ export default function App() {
                 onNavigate={setActiveScreen}
                 onRetake={retakeRecording}
                 onDownload={Platform.OS === 'web' ? downloadRecording : undefined}
-                track={track}
                 corners={corners}
                 metrics={metrics}
                 canClosePolygon={canClosePolygon}
                 onClosePolygon={closePolygon}
                 isExporting={isExporting}
                 onExport={handleExportGarden}
+                exportData={exportData}
                 durationSeconds={recordingSeconds}
+                annotations={aiAnnotations}
+                aiPlanStatus={aiPlanStatus}
+                aiPlanError={aiPlanError}
                 onRetranscribe={() => {
                   if (videoUri && !isProcessing) {
                     processTranscription(videoUri);
@@ -744,99 +785,49 @@ export default function App() {
                   activeScreen === Screen.Recording && { flex: 1 },
                 ]}
             >
-              {activeScreen === Screen.Preview && cornerDrawing?.points?.length ? (
-                  <View
-                      pointerEvents="none"
-                      style={StyleSheet.absoluteFill}
-                      onLayout={e => {
-                        const { width, height } = e.nativeEvent.layout;
-                        setSvgSize({ width, height });
-                      }}
-                  >
-                    {svgSize.width > 0 && svgSize.height > 0 && (
-                        <Svg width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
-                          {(() => {
-                            const W = svgSize.width;
-                            const H = svgSize.height;
-                            const { toFit, fittedPts } = fitToView(cornerDrawing.points, W, H, 24);
-
-                            // zones first
-                            {(cornerDrawing.zones ?? []).map(z => {
-                              if (!z.points?.length) return null;
-                              const zPts = z.points.map(toFit);
-                              return (
-                                  <Polygon
-                                      key={`zone-${z.id}`}
-                                      points={zPts.map(p => `${p.x},${p.y}`).join(' ')}
-                                      stroke={zoneStrokeColor(z.type)}
-                                      fill={zoneFillColor(z.type)}
-                                      strokeWidth={1}
-                                      strokeOpacity={0.85}
-                                      fillOpacity={0.28}
-                                  />
-                              );
-                            })}
-
-                            if (cornerDrawing.closed) {
-                              return (
-                                  <>
-                                    <Polygon
-                                        points={fittedPts.map(p => `${p.x},${p.y}`).join(' ')}
-                                        strokeWidth={2}
-                                        strokeOpacity={0.9}
-                                        fillOpacity={0.12}
-                                    />
-                                    {fittedPts.map((p, i) => (
-                                        <G key={`corner-${i}`}>
-                                          <Circle cx={p.x} cy={p.y} r={3} />
-                                        </G>
-                                    ))}
-                                    {(cornerDrawing.annotations ?? []).map(a => {
-                                      const p = toFit({ x: a.x, y: a.y });
-                                      return (
-                                          <G key={a.id} x={p.x} y={p.y}>
-                                            {getAnnotationIcon(a.type, 16)}
-                                          </G>
-                                      );
-                                    })}
-                                  </>
-                              );
-                            } else {
-                              return (
-                                  <>
-                                    <Polyline
-                                        points={fittedPts.map(p => `${p.x},${p.y}`).join(' ')}
-                                        strokeWidth={2}
-                                        strokeOpacity={0.9}
-                                        fill="none"
-                                    />
-                                    {fittedPts.map((p, i) => (
-                                        <G key={`corner-${i}`}>
-                                          <Circle cx={p.x} cy={p.y} r={3} />
-                                        </G>
-                                    ))}
-                                    {(cornerDrawing.annotations ?? []).map(a => {
-                                      const p = toFit({ x: a.x, y: a.y });
-                                      return (
-                                          <G key={a.id} x={p.x} y={p.y}>
-                                            {getAnnotationIcon(a.type, 16)}
-                                          </G>
-                                      );
-                                    })}
-                                  </>
-                              );
-                            }
-                          })()}
-                        </Svg>
-                    )}
-                  </View>
-              ) : null}
               {renderScreen()}
             </StyledView>
           </StyledView>
         </StyledView>
       </StyledSafeAreaView>
   );
+}
+
+function buildLayoutSignature(layout: CornerExportData): string {
+  const pointsSig = layout.points
+      .map((pt) => `${Math.round(pt.x * 100)}:${Math.round(pt.y * 100)}`)
+      .join('|');
+  return `${pointsSig}|${layout.closed ? 1 : 0}|${Math.round(layout.scale * 1000)}`;
+}
+
+function buildTranscriptSignature(segments: TranscriptSegment[]): string {
+  if (!segments.length) {
+    return '';
+  }
+  return segments
+      .map((segment) => {
+        const label = segment.text?.slice(0, 48) ?? '';
+        return `${Math.round(segment.start_s * 10)}:${label}`;
+      })
+      .join('|');
+}
+
+function buildHeadingsSignature(headings: HeadingSample[]): string {
+  if (!headings.length) {
+    return '';
+  }
+  return headings
+      .slice(0, 120)
+      .map((sample) => `${sample.second}:${Math.round(sample.heading_deg)}`)
+      .join('|');
+}
+
+function buildAiPlanSignature(
+    layout: CornerExportData,
+    segments: TranscriptSegment[],
+    headings: HeadingSample[],
+): string {
+  return `${buildLayoutSignature(layout)}::${buildTranscriptSignature(segments)}::${buildHeadingsSignature(headings)}`;
 }
 
 function formatTimestampLabel(totalSeconds: number): string {

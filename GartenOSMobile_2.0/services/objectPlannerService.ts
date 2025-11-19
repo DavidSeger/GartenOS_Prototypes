@@ -70,6 +70,7 @@ export async function suggestAnnotationsWithChatGPT(
       '• Never delete, rename, or rewrite existing annotations or zones. ' +
       '• Never normalize or reorder unrelated parts of the JSON. ' +
       '• Output must be valid JSON conforming exactly to the provided schema. ' +
+      '• Always make sure that object IDs in the JSON are unique, no duplicate identifiers. ' +
       '' +
       'Placement logic (very important): ' +
       '1) Treat the transcript as a sequence of segments tied to time. Whenever the narrator says things like "now we are at this edge", "now I am here", or when heading changes strongly, start a NEW edge segment. ' +
