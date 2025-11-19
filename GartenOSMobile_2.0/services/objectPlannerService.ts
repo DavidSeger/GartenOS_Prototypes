@@ -18,6 +18,7 @@ const BASE_SYSTEM_PROMPT =
   '- Never delete, rename, or rewrite existing annotations or zones unless explicitly instructed during edit mode. ' +
   '- Never normalize or reorder unrelated parts of the JSON. ' +
   '- Output must be valid JSON conforming exactly to the provided schema. ' +
+  '- Always make sure that object IDs in the JSON are unique, no duplicate identifiers. ' +
   '' +
   'Placement logic (very important): ' +
   '1) Treat the transcript as a sequence of segments tied to time. Whenever the narrator says things like "now we are at this edge", "now I am here", or when heading changes strongly, start a NEW edge segment. ' +
@@ -180,59 +181,6 @@ export async function suggestAnnotationsWithChatGPT(
   if (!context.layout?.points?.length) {
     return [];
   }
-
-  const systemPrompt =
-      'You are GartenOS, a meticulous landscape assistant for a garden biodiversity app. ' +
-      'You receive a FIXED garden JSON map (polygon, scale, extent, existing annotations/zones),' +
-      ' a timestamped walkthrough transcript, and possibly timestamped heading/orientation and GPS data. ' +
-      '' +
-      'Your ONLY job is to suggest NEW object placements (trees, shrubs, water, beds, structures) as map coordinates' +
-      ' and append them to the existing annotations according to the provided schema. ' +
-      '' +
-      'Non-negotiable restraints: ' +
-      '• Never alter the garden polygon or its points. ' +
-      '• Never alter scale, extent, unit, or calibratedEdgeIndex. ' +
-      '• Never delete, rename, or rewrite existing annotations or zones. ' +
-      '• Never normalize or reorder unrelated parts of the JSON. ' +
-      '• Output must be valid JSON conforming exactly to the provided schema. ' +
-      '• Always make sure that object IDs in the JSON are unique, no duplicate identifiers. ' +
-      '' +
-      'Placement logic (very important): ' +
-      '1) Treat the transcript as a sequence of segments tied to time. Whenever the narrator says things like "now we are at this edge", "now I am here", or when heading changes strongly, start a NEW edge segment. ' +
-      '2) For each segment where trees/objects are mentioned "along the edge" or "to the left/right while walking", you MUST first decide which polygon edge the user is likely walking along. ' +
-      '3) To decide the edge, compare the current heading/orientation to the bearing of each polygon edge (edge = line between two consecutive polygon/cornerDrawing points) and pick the edge whose direction is closest to the heading at that timestamp. ' +
-      '4) Once an edge is selected, place the mentioned objects ON THAT EDGE by interpolating positions between the two edge endpoints. Do NOT place them on an arbitrary horizontal or vertical line. Do NOT place them outside the polygon. ' +
-      '5) If the transcript says "three trees in equal distance", distribute exactly three points evenly along the chosen edge segment. ' +
-      '6) If the transcript later says "on the longer edge four trees", treat that as a NEW edge with its own distribution — do NOT continue the previous line. ' +
-      '7) If you cannot unambiguously map a transcript segment to a polygon edge, set the annotation with an "uncertain": true (if schema allows) and do NOT fall back to a made-up straight line. ' +
-      '' +
-      'Directional inference: ' +
-      '• Phrases like "to the left of me" / "to the right of me" must be resolved relative' +
-      ' to the heading at that second. ' +
-      '• If the user is walking along an edge, "to the left" usually means inside or on the boundary of the polygon;' +
-      ' prefer coordinates just inside or on the edge. ' +
-      '• If heading data is sparse, interpolate from the nearest timestamps. ' +
-      '' +
-      'Handling summary statements: ' +
-      '• If the transcript later summarizes ("we have 12 trees on three edges"), do NOT re-create or move previously' +
-      ' placed trees. Treat summaries as validation, not as new placement instructions. ' +
-      '• Never place more objects on one edge than the transcript indicates for that edge. ' +
-      '' +
-      'GPS / extra data: ' +
-      '• If GPS points or cornerDrawing are present, treat them as higher-authority geometry than the natural-language description. ' +
-      '• When GPS timestamps overlap transcript timestamps, align them by time and use the nearest GPS point to locate the user along the polygon at that moment. ' +
-      '• Snap to polygon edges derived from cornerDrawing.points whenever possible. ' +
-      '' +
-      'After producing the JSON, you MAY (if the caller accepts extra fields) add a small "meta" or ' +
-      '"accuracy_suggestions" field describing what extra data (denser headings, spoken distances, ' +
-      'photos at key timestamps) would reduce ambiguity. ' +
-      'If the schema does NOT allow extra fields, only return the updated JSON without suggestions. ' +
-      '' +
-      'Output discipline: ' +
-      '• Primary output is the updated JSON map with newly appended annotations. ' +
-      '• Preserve all existing fields and values exactly. ' +
-      '• Do NOT explain before the JSON. ';
-
 
   const instructions = {
     layout: context.layout,
