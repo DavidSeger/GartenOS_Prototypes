@@ -42,6 +42,8 @@ type TrackPoint = { latitude: number; longitude: number; timestamp: number };
 export default function App() {
   const [activeScreen, setActiveScreen] = useState<Screen>(Screen.Home);
   const [videoUri, setVideoUri] = useState<string | null>(null);
+  const [walkthroughAudioUri, setWalkthroughAudioUri] = useState<string | null>(null);
+  const [transcriptionMediaUri, setTranscriptionMediaUri] = useState<string | null>(null);
   const [transcript, setTranscript] = useState<string>(DEFAULT_TRANSCRIPT_MESSAGE);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [isCameraReady, setIsCameraReady] = useState<boolean>(false);
@@ -71,6 +73,7 @@ export default function App() {
   const layoutSignatureRef = useRef<string | null>(null);
   const aiPlanSignatureRef = useRef<string | null>(null);
   const editRecordingRef = useRef<Audio.Recording | null>(null);
+  const walkthroughAudioRecordingRef = useRef<Audio.Recording | null>(null);
 
   const metrics = useMetrics(corners);
   const exportData = useCornerExportData(corners, metrics);
@@ -363,14 +366,89 @@ export default function App() {
     }
   }, []);
 
+  const stopWalkthroughAudioRecording = useCallback(async (): Promise<string | null> => {
+    const recording = walkthroughAudioRecordingRef.current;
+    if (!recording) {
+      return null;
+    }
+    walkthroughAudioRecordingRef.current = null;
+    try {
+      await recording.stopAndUnloadAsync();
+      return recording.getURI() ?? null;
+    } catch (error) {
+      console.warn('Unable to finalize walkthrough audio recording', error);
+      return null;
+    }
+  }, []);
+
+  const clearWalkthroughAudio = useCallback(async () => {
+    const pending = await stopWalkthroughAudioRecording();
+    const uriToDelete = pending ?? walkthroughAudioUri;
+    if (uriToDelete) {
+      await deleteFileIfExists(uriToDelete);
+    }
+    setWalkthroughAudioUri(null);
+    setTranscriptionMediaUri(null);
+  }, [deleteFileIfExists, stopWalkthroughAudioRecording, walkthroughAudioUri]);
+
+  const startWalkthroughAudioRecording = useCallback(async () => {
+    if (Platform.OS === 'web') {
+      walkthroughAudioRecordingRef.current = null;
+      return;
+    }
+    try {
+      const permission = await Audio.requestPermissionsAsync?.();
+      if (permission && !permission.granted) {
+        console.warn('Microphone permission denied for standalone audio capture.');
+        return;
+      }
+      const recording = new Audio.Recording();
+      await recording.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      await recording.startAsync();
+      walkthroughAudioRecordingRef.current = recording;
+    } catch (error) {
+      console.warn('Unable to start walkthrough audio capture', error);
+      walkthroughAudioRecordingRef.current = null;
+    }
+  }, []);
+
+  const toggleWalkthroughAudioPause = useCallback(
+      async (pause: boolean) => {
+        const recording = walkthroughAudioRecordingRef.current;
+        if (!recording) {
+          return;
+        }
+        try {
+          if (pause) {
+            await recording.pauseAsync();
+          } else {
+            await recording.startAsync();
+          }
+        } catch (error) {
+          console.warn('Unable to toggle walkthrough audio recording state', error);
+        }
+      },
+      [],
+  );
+
   const handleRecordingComplete = useCallback(
       async (uri: string | null) => {
         stopTimer();
         recordingPromiseRef.current = null;
         setIsRecording(false);
         setIsPaused(false);
-        await configureAudioMode(false);
         stopLocationTracking();
+
+        let audioUri: string | null = null;
+        try {
+          audioUri = await stopWalkthroughAudioRecording();
+        } finally {
+          await configureAudioMode(false);
+        }
+
+        const transcriptionUri = audioUri ?? uri ?? null;
+        setWalkthroughAudioUri(audioUri ?? null);
+        setTranscriptionMediaUri(transcriptionUri);
 
         if (!uri) {
           Alert.alert('Recording unavailable', 'No video was captured. Please try again.');
@@ -381,7 +459,7 @@ export default function App() {
         setVideoUri(uri);
         setActiveScreen(Screen.Preview);
       },
-      [configureAudioMode, stopLocationTracking, stopTimer],
+      [configureAudioMode, stopLocationTracking, stopTimer, stopWalkthroughAudioRecording],
   );
 
   const startRecording = useCallback(async () => {
@@ -399,6 +477,7 @@ export default function App() {
       return;
     }
 
+    await clearWalkthroughAudio();
     updatePauseSupport();
     setIsPaused(false);
     setTranscript(DEFAULT_TRANSCRIPT_MESSAGE);
@@ -417,6 +496,7 @@ export default function App() {
     setIsRecording(true);
 
     await configureAudioMode(true);
+    await startWalkthroughAudioRecording();
     recordingStartRef.current = Date.now();
 
     try {
@@ -435,6 +515,12 @@ export default function App() {
       stopTimer();
       recordingPromiseRef.current = null;
       setIsRecording(false);
+      const orphanAudio = await stopWalkthroughAudioRecording();
+      if (orphanAudio) {
+        await deleteFileIfExists(orphanAudio);
+      }
+      setWalkthroughAudioUri(null);
+      setTranscriptionMediaUri(null);
       await configureAudioMode(false);
       stopLocationTracking();
       Alert.alert(
@@ -446,19 +532,28 @@ export default function App() {
       setActiveScreen(Screen.Home);
     }
   }, [
+    clearWalkthroughAudio,
     configureAudioMode,
+    deleteFileIfExists,
     handleRecordingComplete,
     isCameraReady,
     startLocationTracking,
     startTimer,
+    startWalkthroughAudioRecording,
     stopLocationTracking,
     stopTimer,
+    stopWalkthroughAudioRecording,
     updatePauseSupport,
   ]);
 
   useEffect(() => {
-    if (shouldAutoRestart) {
+    if (!shouldAutoRestart) {
+      return;
+    }
+    (async () => {
       setShouldAutoRestart(false);
+      await deleteFileIfExists(videoUri);
+      await clearWalkthroughAudio();
       setVideoUri(null);
       setTranscript(DEFAULT_TRANSCRIPT_MESSAGE);
       setRawTranscriptSegments([]);
@@ -466,9 +561,9 @@ export default function App() {
       setHeadings([]);
       setIsPaused(false);
       recordingStartRef.current = null;
-      startRecording();
-    }
-  }, [shouldAutoRestart, startRecording]);
+      await startRecording();
+    })();
+  }, [shouldAutoRestart, startRecording, deleteFileIfExists, videoUri, clearWalkthroughAudio]);
 
   const stopRecording = useCallback(() => {
     if (cameraRef.current && recordingPromiseRef.current) {
@@ -485,24 +580,24 @@ export default function App() {
     }
     try {
       await cameraRef.current.toggleRecordingAsync?.();
-      setIsPaused((prev) => {
-        const next = !prev;
-        if (next) {
-          stopTimer();
-        } else {
-          startTimer();
-        }
-        return next;
-      });
+      const nextPaused = !isPaused;
+      setIsPaused(nextPaused);
+      if (nextPaused) {
+        stopTimer();
+      } else {
+        startTimer();
+      }
+      await toggleWalkthroughAudioPause(nextPaused);
     } catch (error) {
       console.warn('Unable to pause or resume recording:', error);
     }
-  }, [isPauseSupported, startTimer, stopTimer]);
+  }, [isPauseSupported, isPaused, startTimer, stopTimer, toggleWalkthroughAudioPause]);
 
   const resetApp = useCallback(async () => {
     setIsPaused(false);
     await configureAudioMode(false);
     await deleteFileIfExists(videoUri);
+    await clearWalkthroughAudio();
     setVideoUri(null);
     setTranscript(DEFAULT_TRANSCRIPT_MESSAGE);
     setRawTranscriptSegments([]);
@@ -528,7 +623,7 @@ export default function App() {
     aiPlanSignatureRef.current = null;
     setActiveScreen(Screen.Home);
     recordingStartRef.current = null;
-  }, [configureAudioMode, deleteFileIfExists, stopLocationTracking, stopTimer, videoUri]);
+  }, [clearWalkthroughAudio, configureAudioMode, deleteFileIfExists, stopLocationTracking, stopTimer, videoUri]);
 
   const handleExportGarden = useCallback(
       async (exportData: CornerExportData | null) => {
@@ -664,16 +759,17 @@ export default function App() {
   useEffect(() => {
     if (
         activeScreen === Screen.Preview &&
-        videoUri &&
+        transcriptionMediaUri &&
         !isProcessing &&
         transcript.startsWith('The auto-generated')
     ) {
-      processTranscription(videoUri);
+      processTranscription(transcriptionMediaUri);
     }
-  }, [activeScreen, videoUri, isProcessing, transcript, processTranscription]);
+  }, [activeScreen, transcriptionMediaUri, isProcessing, transcript, processTranscription]);
 
   const retakeRecording = useCallback(async () => {
     await deleteFileIfExists(videoUri);
+    await clearWalkthroughAudio();
     setIsPaused(false);
     setVideoUri(null);
     setTranscript(DEFAULT_TRANSCRIPT_MESSAGE);
@@ -694,7 +790,7 @@ export default function App() {
     recordingStartRef.current = null;
     setActiveScreen(Screen.Recording);
     setShouldAutoRestart(true);
-  }, [deleteFileIfExists, videoUri]);
+  }, [clearWalkthroughAudio, deleteFileIfExists, videoUri]);
 
   const downloadRecording = useCallback(async () => {
     if (!videoUri || Platform.OS !== 'web') {

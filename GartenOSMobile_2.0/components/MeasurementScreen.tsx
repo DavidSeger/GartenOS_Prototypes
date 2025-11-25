@@ -112,10 +112,11 @@ const MeasurementScreen: React.FC<MeasurementScreenProps> = ({ onNavigate, layou
                         <Circle cx={p.x} cy={p.y} r={3.2} fill="#14532d" />
                       </G>
                     ))}
-                    {(annotations ?? []).map((ann) => {
+                    {(annotations ?? []).map((ann, index) => {
                       const point = fitted.toFit({ x: ann.x, y: ann.y });
+                      const key = `${ann.id ?? 'ann'}-${index}`;
                       return (
-                        <G key={ann.id} x={point.x} y={point.y}>
+                        <G key={key} x={point.x} y={point.y}>
                           {getAnnotationIcon(ann.type, 16)}
                         </G>
                       );
