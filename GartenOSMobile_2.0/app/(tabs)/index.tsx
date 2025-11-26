@@ -28,7 +28,7 @@ import PreviewScreen from '../../components/PreviewScreen.tsx';
 import MeasurementScreen from '../../components/MeasurementScreen.tsx';
 import CertScreen from '../../components/CertScreen.tsx';
 import SubmittedScreen from '../../components/SubmittedScreen.tsx';
-import { CornerExportData } from '../../components/CornersMap.tsx';
+import { CornerExportData, useCornerExportData } from '../../components/CornersMap.tsx';
 import { getAnnotationIcon } from '../../components/MapIcons.tsx';
 import Svg, { G, Polygon, Polyline, Circle, Text as SvgText } from 'react-native-svg';
 
@@ -84,6 +84,8 @@ export default function App() {
   const recordingStartRef = useRef<number | null>(null);
 
   const metrics = useMetrics(corners);
+  const exportData = useCornerExportData(corners, metrics);
+  const walkDistanceMeters = React.useMemo(() => computeTrackDistance(track), [track]);
   const canClosePolygon = Boolean(metrics && corners.length >= 3 && !metrics.closed);
 
   useEffect(() => {
@@ -681,6 +683,7 @@ export default function App() {
                 isExporting={isExporting}
                 onExport={handleExportGarden}
                 durationSeconds={recordingSeconds}
+                walkDistanceMeters={walkDistanceMeters}
                 onRetranscribe={() => {
                   if (videoUri && !isProcessing) {
                     processTranscription(videoUri);
@@ -689,7 +692,14 @@ export default function App() {
             />
         );
       case Screen.Measurement:
-        return <MeasurementScreen onNavigate={setActiveScreen} />;
+        return (
+            <MeasurementScreen
+                onNavigate={setActiveScreen}
+                layout={exportData}
+                metrics={metrics}
+                annotations={[]}
+            />
+        );
       case Screen.Certification:
         return (
             <CertScreen
@@ -1061,4 +1071,34 @@ function computeHeadingDegrees(a: TrackPoint, b: TrackPoint): number {
   const x = Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(deltaLambda);
   const theta = Math.atan2(y, x);
   return (((theta * 180) / Math.PI) + 360) % 360;
+}
+
+function computeTrackDistance(track: TrackPoint[]): number {
+  if (!track || track.length < 2) {
+    return 0;
+  }
+  const origin = track[0];
+  if (!Number.isFinite(origin?.latitude) || !Number.isFinite(origin?.longitude)) {
+    return 0;
+  }
+  const proj = toMetersProjector(origin.latitude, origin.longitude);
+  let distance = 0;
+  for (let i = 0; i < track.length - 1; i += 1) {
+    const a = track[i];
+    const b = track[i + 1];
+    if (
+      !a ||
+      !b ||
+      !Number.isFinite(a.latitude) ||
+      !Number.isFinite(a.longitude) ||
+      !Number.isFinite(b.latitude) ||
+      !Number.isFinite(b.longitude)
+    ) {
+      continue;
+    }
+    const pa = proj.toXY(a.latitude, a.longitude);
+    const pb = proj.toXY(b.latitude, b.longitude);
+    distance += Math.hypot(pb.x - pa.x, pb.y - pa.y);
+  }
+  return distance;
 }

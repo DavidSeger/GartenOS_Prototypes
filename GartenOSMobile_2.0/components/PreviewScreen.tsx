@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
 import { Video, ResizeMode } from 'expo-av';
 import { styled } from 'nativewind';
+import InfoButton from './InfoButton';
 
 import { Screen } from '../types';
 import { TrackMap, TrackPoint } from './TrackMap';
@@ -31,6 +32,7 @@ interface PreviewScreenProps {
   onExport: (data: CornerExportData | null) => void;
   durationSeconds: number;
   onRetranscribe: () => void;
+  walkDistanceMeters: number;
 }
 
 const PreviewScreen: React.FC<PreviewScreenProps> = ({
@@ -51,6 +53,7 @@ const PreviewScreen: React.FC<PreviewScreenProps> = ({
                                                        onExport,
                                                        durationSeconds,
                                                        onRetranscribe,
+                                                       walkDistanceMeters,
                                                      }) => {
   const video = React.useRef<Video | null>(null);
   const exportData = useCornerExportData(corners, metrics);
@@ -68,6 +71,12 @@ const PreviewScreen: React.FC<PreviewScreenProps> = ({
     const seconds = Math.floor(durationSeconds % 60);
     return `${minutes}:${String(seconds).padStart(2, '0')}`;
   }, [durationSeconds]);
+  const formattedWalkDistance = React.useMemo(() => {
+    if (!Number.isFinite(walkDistanceMeters) || walkDistanceMeters <= 0) return '0 m';
+    if (walkDistanceMeters >= 1000) return `${(walkDistanceMeters / 1000).toFixed(2)} km`;
+    if (walkDistanceMeters >= 10) return `${walkDistanceMeters.toFixed(1)} m`;
+    return `${walkDistanceMeters.toFixed(2)} m`;
+  }, [walkDistanceMeters]);
   const hasSegments = transcriptSegments.length > 0;
   const statusMessage = React.useMemo(() => {
     if (!isProcessing || !transcriptionStatus) {
@@ -116,14 +125,31 @@ const PreviewScreen: React.FC<PreviewScreenProps> = ({
           )}
           <StyledView className="bg-green-50/70 border border-green-200 rounded-xl p-3 w-full mt-3">
             <StyledView className="flex-row justify-between items-center mb-2">
-              <StyledText className="text-xs text-indigo-900 opacity-80 font-semibold">Corner mapper</StyledText>
+              <StyledView className="flex-row items-center">
+                <StyledText className="text-xs text-indigo-900 opacity-80 font-semibold">Corner mapper</StyledText>
+                <InfoButton
+                  label="Corner mapper"
+                  message="Shows the corners you captured and any AI-suggested objects before exporting the map."
+                  size={18}
+                  color="#1f2937"
+                />
+              </StyledView>
               {canClosePolygon && (
                   <StyledTouchableOpacity
                       onPress={onClosePolygon}
                       className="bg-blue-100 border border-blue-200 px-3 py-1 rounded-lg"
                       activeOpacity={0.7}
                   >
-                    <StyledText className="text-blue-700 text-xs font-semibold">Close polygon</StyledText>
+                    <StyledView className="flex-row items-center">
+                      <StyledText className="text-blue-700 text-xs font-semibold">Close polygon</StyledText>
+                      <InfoButton
+                        label="Close polygon"
+                        message="Connects your last captured corner back to the first one so the area is sealed."
+                        size={16}
+                        color="#1d4ed8"
+                        style={{ marginLeft: 4 }}
+                      />
+                    </StyledView>
                   </StyledTouchableOpacity>
               )}
             </StyledView>
@@ -178,9 +204,17 @@ const PreviewScreen: React.FC<PreviewScreenProps> = ({
               disabled={!exportReady || isExporting || isProcessing}
               style={{ opacity: !exportReady || isExporting || isProcessing ? 0.6 : 1 }}
           >
-            <StyledText className="text-white text-base font-semibold text-center">
-              {isExporting ? 'Exporting…' : 'Export garden JSON'}
-            </StyledText>
+            <StyledView className="flex-row items-center justify-center">
+              <StyledText className="text-white text-base font-semibold text-center">
+                {isExporting ? 'Exporting...' : 'Export garden JSON'}
+              </StyledText>
+              <InfoButton
+                label="Export garden JSON"
+                message="Downloads a shareable JSON map with your corners, transcript, and AI-placed objects."
+                color="#ecfdf3"
+                style={{ marginLeft: 8 }}
+              />
+            </StyledView>
           </StyledTouchableOpacity>
           {!exportReady && (
               <StyledText className="text-xs text-gray-500 mt-2 text-center">
@@ -190,7 +224,15 @@ const PreviewScreen: React.FC<PreviewScreenProps> = ({
 
           {/* Transcript header + re-transcribe button */}
           <StyledView className="flex-row items-center justify-between w-full mt-4 mb-1">
-            <StyledText className="font-bold text-left">Transcript (auto-generated):</StyledText>
+            <StyledView className="flex-row items-center">
+              <StyledText className="font-bold text-left">Transcript:</StyledText>
+              <InfoButton
+                label="Transcript"
+                message="This is the voice-to-text version of your walkthrough. Re-transcribe if something looks off."
+                size={18}
+                style={{ marginLeft: 6 }}
+              />
+            </StyledView>
             <StyledTouchableOpacity
                 onPress={onRetranscribe}
                 className="bg-green-100 border border-green-200 px-3 py-1 rounded-lg"
@@ -233,7 +275,7 @@ const PreviewScreen: React.FC<PreviewScreenProps> = ({
               {formattedDuration} min
             </StyledText>
             <StyledText className="bg-green-100 border border-green-200 text-green-800 rounded-full px-3 py-1 text-sm">
-              120 m walk
+              {formattedWalkDistance} walk
             </StyledText>
           </StyledView>
           <StyledView className="flex-row gap-2 justify-center mt-2 w-full">
@@ -242,15 +284,29 @@ const PreviewScreen: React.FC<PreviewScreenProps> = ({
                 className="bg-green-100 border border-green-200 px-4 py-3 rounded-lg flex-1"
                 activeOpacity={0.7}
             >
-              <StyledText className="text-green-800 text-base font-semibold text-center">Measurements</StyledText>
+              <StyledText
+                className="text-green-800 text-base font-semibold text-center"
+                numberOfLines={1}
+                ellipsizeMode="clip"
+                adjustsFontSizeToFit
+                minimumFontScale={0.9}
+              >
+                Measurements
+              </StyledText>
             </StyledTouchableOpacity>
             <StyledTouchableOpacity
                 onPress={() => onNavigate(Screen.Certification)}
                 className="bg-green-600 px-4 py-3 rounded-lg flex-1"
                 activeOpacity={0.7}
             >
-              <StyledText className="text-white text-base font-semibold text-center">
-                Continue to Certifications
+              <StyledText
+                className="text-white text-base font-semibold text-center"
+                numberOfLines={1}
+                ellipsizeMode="clip"
+                adjustsFontSizeToFit
+                minimumFontScale={0.9}
+              >
+                Certifications
               </StyledText>
             </StyledTouchableOpacity>
           </StyledView>

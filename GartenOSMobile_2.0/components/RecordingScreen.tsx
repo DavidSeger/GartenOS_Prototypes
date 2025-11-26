@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import InfoButton from './InfoButton';
 
 interface RecordingScreenProps {
   elapsedSeconds: number;
@@ -30,11 +31,12 @@ const RecordingScreen: React.FC<RecordingScreenProps> = ({
                                                            isStoppingDisabled = false,
                                                            onMarkCorner,
                                                            isMarkingCorner,
-                                                           cornerCount,
-                                                           onClosePolygon,
-                                                           canClosePolygon,
-                                                         }) => {
+                                                         cornerCount,
+                                                         onClosePolygon,
+                                                         canClosePolygon,
+                                                       }) => {
   const [cornerCountdown, setCornerCountdown] = useState(15);
+  const cornerTitleLabel = isMarkingCorner ? `Averaging corner... ${cornerCountdown}s` : 'Mark corner (15s)';
 
   useEffect(() => {
     let timer: NodeJS.Timeout | null = null;
@@ -130,11 +132,15 @@ const RecordingScreen: React.FC<RecordingScreenProps> = ({
                 activeOpacity={0.85}
                 disabled={isMarkingCorner || isStoppingDisabled}
             >
-              <Text style={styles.cornerTitle}>
-                {isMarkingCorner
-                    ? `Averaging corner… ${cornerCountdown}s`
-                    : 'Mark corner (15s)'}
-              </Text>
+              <View style={styles.cornerTitleRow}>
+                <Text style={styles.cornerTitle}>{cornerTitleLabel}</Text>
+                <InfoButton
+                  label="Mark corner"
+                  message="Stand still for about 15 seconds so we can average the GPS position for this corner."
+                  color="#064e3b"
+                  style={styles.infoIconDark}
+                />
+              </View>
               <Text style={styles.cornerSubtitle}>
                 {isMarkingCorner
                     ? 'Hold steady while we capture GPS'
@@ -150,7 +156,7 @@ const RecordingScreen: React.FC<RecordingScreenProps> = ({
           )}
           <Text style={[styles.helperText, { marginTop: 6 }]}>
             Corners captured: {cornerCount}
-            {canClosePolygon ? ' • Press stop to close Area' : ''}
+            {canClosePolygon ? ' - Press stop to close Area' : ''}
           </Text>
         </View>
       </View>
@@ -314,6 +320,10 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     rowGap: 12,
   },
+  cornerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   cornerButton: {
     backgroundColor: '#d1fae5',
     borderRadius: 16,
@@ -331,6 +341,9 @@ const styles = StyleSheet.create({
     marginTop: 6,
     fontSize: 12,
     color: '#047857',
+  },
+  infoIconDark: {
+    marginLeft: 6,
   },
 });
 

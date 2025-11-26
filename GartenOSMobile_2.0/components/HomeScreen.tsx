@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { styled } from 'nativewind';
+import InfoButton from './InfoButton';
 
 const StyledView = styled(View);
 const StyledText = styled(Text);
@@ -18,6 +19,14 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ onStartRecording, isCameraReady
       <StyledText className="text-gray-600 text-center">
         Record a short video walkthrough of your garden while describing the changes you made.
       </StyledText>
+      <StyledView className="flex-row items-center mt-3">
+        <StyledText className="text-sm font-semibold text-gray-700">Walkthrough recording</StyledText>
+        <InfoButton
+          label="Walkthrough recording"
+          message="Captures video and audio so the app can map your garden and auto-place objects from your narration."
+          color="#166534"
+        />
+      </StyledView>
       <StyledTouchableOpacity
         onPress={onStartRecording}
         className="bg-green-600 px-4 py-3 rounded-lg mt-3 w-full"

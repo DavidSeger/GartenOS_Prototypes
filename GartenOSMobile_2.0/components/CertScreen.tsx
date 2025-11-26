@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { styled } from 'nativewind';
 import { Screen } from '../types';
+import InfoButton from './InfoButton';
 
 const StyledView = styled(View);
 const StyledText = styled(Text);
@@ -23,6 +24,12 @@ const KeyValue: React.FC<{ label: string; value: string }> = ({ label, value }) 
 
 const CertScreen: React.FC<CertScreenProps> = ({ transcript, onNavigate, onSubmit }) => {
   const [proofFrames, setProofFrames] = useState<number[]>([]);
+  const confirmSubmit = () => {
+    Alert.alert('Submit certification?', 'Send your walkthrough, transcript, and proof for pro review now.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Submit', onPress: onSubmit },
+    ]);
+  };
 
   const captureProof = () => {
     setProofFrames((prev) => {
@@ -35,7 +42,14 @@ const CertScreen: React.FC<CertScreenProps> = ({ transcript, onNavigate, onSubmi
   return (
     <StyledScrollView>
       <StyledView className="p-5 items-center">
-        <StyledText className="text-xl font-bold text-gray-800 mb-2">Certifications</StyledText>
+        <StyledView className="flex-row items-center mb-2">
+          <StyledText className="text-xl font-bold text-gray-800 mr-2">Certifications</StyledText>
+          <InfoButton
+            label="Certifications"
+            message="Review your criteria, proofs, and submit for pro review."
+            color="#166534"
+          />
+        </StyledView>
         <StyledView className="space-y-3 w-full">
           <StyledView className="bg-green-50/70 border border-green-200 rounded-xl p-3">
             <StyledText className="text-xs text-indigo-900 opacity-80 mb-1 font-semibold">
@@ -61,9 +75,17 @@ const CertScreen: React.FC<CertScreenProps> = ({ transcript, onNavigate, onSubmi
                 className="bg-white border border-green-200 px-4 py-2 rounded-lg"
                 activeOpacity={0.7}
               >
-                <StyledText className="text-green-800 text-sm font-semibold">
-                  Capture proof screenshot
-                </StyledText>
+                <StyledView className="flex-row items-center">
+                  <StyledText className="text-green-800 text-sm font-semibold">
+                    Capture proof screenshot
+                  </StyledText>
+                  <InfoButton
+                    label="Capture proof screenshot"
+                    message="Grab a few frames to attach as visual proof for your submission."
+                    color="#166534"
+                    style={{ marginLeft: 6 }}
+                  />
+                </StyledView>
               </StyledTouchableOpacity>
             </StyledView>
             {proofFrames.length > 0 && (
@@ -97,13 +119,21 @@ const CertScreen: React.FC<CertScreenProps> = ({ transcript, onNavigate, onSubmi
             <StyledText className="text-green-800 text-base font-semibold text-center">Back</StyledText>
           </StyledTouchableOpacity>
           <StyledTouchableOpacity
-            onPress={onSubmit}
+            onPress={confirmSubmit}
             className="bg-green-600 px-4 py-3 rounded-lg flex-1"
             activeOpacity={0.7}
           >
-            <StyledText className="text-white text-base font-semibold text-center">
-              Submit to Pro Review
-            </StyledText>
+            <StyledView className="flex-row items-center justify-center">
+              <StyledText className="text-white text-base font-semibold text-center">
+                Submit
+              </StyledText>
+              <InfoButton
+                label="Submit"
+                message="Send your walkthrough, transcript, and proof for pro review and certification."
+                color="#ecfdf3"
+                style={{ marginLeft: 6 }}
+              />
+            </StyledView>
           </StyledTouchableOpacity>
         </StyledView>
       </StyledView>
