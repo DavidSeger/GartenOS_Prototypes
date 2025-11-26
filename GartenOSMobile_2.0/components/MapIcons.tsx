@@ -4,14 +4,18 @@ import Svg, { G, Circle, Path } from 'react-native-svg';
 
 export type AnnotationType = 'tree' | 'water' | string;
 
-export function TreeIcon({ size = 16 }: { size?: number }) {
+const TREE_COLOR = '#0b8043';
+const WATER_COLOR = '#1e88e5';
+const UNKNOWN_COLOR = '#6b7280';
+
+export function TreeIcon({ size = 16, color = TREE_COLOR }: { size?: number; color?: string }) {
     const s = size;
     const trunkW = s * 0.2;
     const trunkH = s * 0.4;
     const canopyR = s * 0.45;
     return (
         <Svg width={s} height={s} viewBox={[-s/2, -s, s, s].join(' ')}>
-            <G>
+            <G fill={color}>
                 {/* canopy */}
                 <Circle cx={0} cy={-trunkH - canopyR * 0.2} r={canopyR} />
                 {/* trunk (rect via path) */}
@@ -21,7 +25,7 @@ export function TreeIcon({ size = 16 }: { size?: number }) {
     );
 }
 
-export function WaterIcon({ size = 16 }: { size?: number }) {
+export function WaterIcon({ size = 16, color = WATER_COLOR }: { size?: number; color?: string }) {
     const s = size;
     const r = s * 0.45;
     return (
@@ -35,16 +39,17 @@ export function WaterIcon({ size = 16 }: { size?: number }) {
           C ${-r} ${-r * 0.05}, ${-r * 0.55} ${-r * 0.3}, 0 ${-r}
           Z
         `}
+                fill={color}
             />
         </Svg>
     );
 }
 
-export function UnknownIcon({ size = 12 }: { size?: number }) {
+export function UnknownIcon({ size = 12, color = UNKNOWN_COLOR }: { size?: number; color?: string }) {
     const s = size;
     return (
         <Svg width={s} height={s} viewBox={[-s/2, -s/2, s, s].join(' ')}>
-            <Circle cx={0} cy={0} r={s * 0.4} />
+            <Circle cx={0} cy={0} r={s * 0.4} fill={color} />
         </Svg>
     );
 }
@@ -52,10 +57,10 @@ export function UnknownIcon({ size = 12 }: { size?: number }) {
 export function getAnnotationIcon(type: AnnotationType, size = 16) {
     switch (type) {
         case 'tree':
-            return <TreeIcon size={size} />;
+            return <TreeIcon size={size} color={TREE_COLOR} />;
         case 'water':
-            return <WaterIcon size={size} />;
+            return <WaterIcon size={size} color={WATER_COLOR} />;
         default:
-            return <UnknownIcon size={size} />;
+            return <UnknownIcon size={size} color={UNKNOWN_COLOR} />;
     }
 }

@@ -8,7 +8,7 @@ import { Screen } from '../types';
 import { CornerExportData } from './CornersMap';
 import { Corner, CornerMetrics } from '../app/utils/geo';
 import { TranscriptionStatus, TranscriptSegment } from '../services/geminiService.ts';
-import { GardenAnnotation } from '../services/objectPlannerService.ts';
+import { GardenAnnotation, GardenZone } from '../services/objectPlannerService.ts';
 import { getAnnotationIcon } from './MapIcons';
 
 const StyledView = styled(View);
@@ -38,6 +38,7 @@ interface PreviewScreenProps {
   aiPlanStatus: AiPlanStatus;
   aiPlanError: string | null;
   annotations: GardenAnnotation[];
+  zones: GardenZone[];
   onAnnotationEdit: () => void;
   isAnnotationEditRecording: boolean;
   annotationEditStatus: string | null;
@@ -64,6 +65,7 @@ const PreviewScreen: React.FC<PreviewScreenProps> = ({
                                                        aiPlanStatus,
                                                        aiPlanError,
                                                        annotations,
+                                                       zones,
                                                        onAnnotationEdit,
                                                        isAnnotationEditRecording,
                                                        annotationEditStatus,
@@ -153,7 +155,7 @@ const PreviewScreen: React.FC<PreviewScreenProps> = ({
             </StyledView>
             {exportData && metrics && corners.length >= 2 ? (
                 <>
-                  <PlanPreview layout={exportData} annotations={annotations} />
+                  <PlanPreview layout={exportData} annotations={annotations} zones={zones} />
                   <StyledView className="mt-3 space-y-1">
                     <StyledText className="text-sm text-gray-700">
                       Perimeter: {metrics.perim.toFixed(2)} m
@@ -307,11 +309,12 @@ const PreviewScreen: React.FC<PreviewScreenProps> = ({
 type PlanPreviewProps = {
   layout: CornerExportData;
   annotations: GardenAnnotation[];
+  zones: GardenZone[];
 };
 
 type XY = { x: number; y: number };
 
-const PlanPreview: React.FC<PlanPreviewProps> = ({ layout, annotations }) => {
+const PlanPreview: React.FC<PlanPreviewProps> = ({ layout, annotations, zones }) => {
   const [containerSize, setContainerSize] = React.useState({ width: 0, height: 0 });
 
   const fitted = React.useMemo(() => {
@@ -335,6 +338,25 @@ const PlanPreview: React.FC<PlanPreviewProps> = ({ layout, annotations }) => {
       >
         {fitted ? (
             <Svg width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+              {(zones ?? [])
+                  .filter((zone) => Array.isArray(zone.points) && zone.points.length >= 3)
+                  .map((zone) => {
+                    const fittedPoints = zone.points.map((p) => fitted.toFit(p));
+                    const pointsAttr = fittedPoints.map((p) => `${p.x},${p.y}`).join(' ');
+                    const fill = zoneFillColor(zone.type);
+                    const stroke = zoneStrokeColor(zone.type);
+                    return (
+                        <Polygon
+                            key={zone.id ?? pointsAttr}
+                            points={pointsAttr}
+                            stroke={stroke}
+                            strokeWidth={1.5}
+                            strokeOpacity={0.85}
+                            fill={fill}
+                            fillOpacity={0.22}
+                        />
+                    );
+                  })}
               {layout.closed ? (
                   <Polygon
                       points={fitted.fittedPts.map((p) => `${p.x},${p.y}`).join(' ')}
@@ -405,6 +427,22 @@ function fitPlanToView(
   const ty = -minY * scale + padding;
   const toFit = (p: XY) => ({ x: p.x * scale + tx, y: p.y * scale + ty });
   return { toFit, fittedPts: pts.map(toFit) };
+}
+
+function zoneFillColor(type?: string) {
+  const t = (type || '').toLowerCase();
+  if (t === 'soil') return '#8B5A2B';
+  if (t === 'grass') return '#2E8B57';
+  if (t === 'concrete') return '#9E9E9E';
+  return '#4b5563';
+}
+
+function zoneStrokeColor(type?: string) {
+  const t = (type || '').toLowerCase();
+  if (t === 'soil') return '#5E3B1C';
+  if (t === 'grass') return '#1F5E3B';
+  if (t === 'concrete') return '#707070';
+  return '#374151';
 }
 
 export default PreviewScreen;

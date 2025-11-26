@@ -16,10 +16,12 @@ import {
   TranscriptSegment,
 } from '../../services/geminiService.ts';
 import {
-  suggestAnnotationsWithChatGPT,
-  editAnnotationsWithChatGPT,
+  suggestGardenPlanWithChatGPT,
+  editGardenPlanWithChatGPT,
   HeadingSample,
   GardenAnnotation,
+  GardenZone,
+  PlannerSuggestion,
 } from '../../services/objectPlannerService.ts';
 import { averageCorner, Corner, toMetersProjector, useMetrics } from '../utils/geo.ts';
 
@@ -78,6 +80,8 @@ export default function App() {
   const metrics = useMetrics(corners);
   const exportData = useCornerExportData(corners, metrics);
   const [aiAnnotations, setAiAnnotations] = useState<GardenAnnotation[]>([]);
+  const [aiZones, setAiZones] = useState<GardenZone[]>([]);
+  const [aiSurface, setAiSurface] = useState<string | null>(null);
   const [aiPlanStatus, setAiPlanStatus] = useState<'idle' | 'planning' | 'ready' | 'error'>('idle');
   const [aiPlanError, setAiPlanError] = useState<string | null>(null);
   const canClosePolygon = Boolean(metrics && corners.length >= 3 && !metrics.closed);
@@ -129,6 +133,8 @@ export default function App() {
       layoutSignatureRef.current = null;
       aiPlanSignatureRef.current = null;
       setAiAnnotations([]);
+      setAiZones([]);
+      setAiSurface(null);
       setAiPlanStatus('idle');
       setAiPlanError(null);
       if (editRecordingRef.current) {
@@ -140,12 +146,14 @@ export default function App() {
       return;
     }
     const layoutSig = buildLayoutSignature(exportData);
-    if (layoutSignatureRef.current !== layoutSig) {
-      layoutSignatureRef.current = layoutSig;
-      aiPlanSignatureRef.current = null;
-      setAiAnnotations([]);
-      setAiPlanStatus('idle');
-      setAiPlanError(null);
+      if (layoutSignatureRef.current !== layoutSig) {
+        layoutSignatureRef.current = layoutSig;
+        aiPlanSignatureRef.current = null;
+        setAiAnnotations([]);
+        setAiZones([]);
+        setAiSurface(null);
+        setAiPlanStatus('idle');
+        setAiPlanError(null);
       if (editRecordingRef.current) {
         editRecordingRef.current.stopAndUnloadAsync().catch(() => undefined);
         editRecordingRef.current = null;
@@ -158,6 +166,9 @@ export default function App() {
   useEffect(() => {
     if (!transcriptSegments.length) {
       aiPlanSignatureRef.current = null;
+      setAiAnnotations([]);
+      setAiZones([]);
+      setAiSurface(null);
       if (!isProcessing) {
         setAiPlanStatus('idle');
         setAiPlanError(null);
@@ -198,12 +209,15 @@ export default function App() {
       transcriptSegments,
       headings,
       corners,
+      surface: aiSurface,
     })
-        .then((annotations) => {
+        .then((planResult) => {
           if (isCancelled) {
             return;
           }
-          setAiAnnotations(annotations);
+          setAiAnnotations(planResult.annotations);
+          setAiZones(planResult.zones);
+          setAiSurface(planResult.surface ?? null);
           aiPlanSignatureRef.current = signature;
           setAiPlanStatus('ready');
         })
@@ -220,7 +234,7 @@ export default function App() {
     return () => {
       isCancelled = true;
     };
-  }, [activeScreen, corners, exportData, headings, isProcessing, transcriptSegments]);
+  }, [activeScreen, aiSurface, corners, exportData, headings, isProcessing, transcriptSegments]);
 
   const startTimer = useCallback(() => {
     if (timerRef.current) {
@@ -560,6 +574,9 @@ export default function App() {
       setTranscriptSegments([]);
       setHeadings([]);
       setIsPaused(false);
+      setAiAnnotations([]);
+      setAiZones([]);
+      setAiSurface(null);
       recordingStartRef.current = null;
       await startRecording();
     })();
@@ -617,6 +634,8 @@ export default function App() {
     setIsRecordingAnnotationEdit(false);
     setAnnotationEditStatus(null);
     setAiAnnotations([]);
+    setAiZones([]);
+    setAiSurface(null);
     setAiPlanStatus('idle');
     setAiPlanError(null);
     layoutSignatureRef.current = null;
@@ -636,14 +655,22 @@ export default function App() {
           setIsExporting(true);
           const transcriptForExport = buildTimestampedTranscript(transcriptSegments, transcript);
           let annotationsForExport = aiAnnotations;
-          if (!annotationsForExport?.length) {
-            annotationsForExport = await planAiAnnotations({
+          let zonesForExport = aiZones;
+          let surfaceForExport = aiSurface;
+          if (!annotationsForExport?.length && !zonesForExport?.length) {
+            const planResult = await planAiAnnotations({
               layout: exportData,
               corners,
               transcriptSegments,
               headings,
+              surface: surfaceForExport,
             });
+            annotationsForExport = planResult.annotations;
+            zonesForExport = planResult.zones;
+            surfaceForExport = planResult.surface ?? null;
             setAiAnnotations(annotationsForExport);
+            setAiZones(zonesForExport);
+            setAiSurface(surfaceForExport);
             const signature = buildAiPlanSignature(exportData, transcriptSegments, headings);
             aiPlanSignatureRef.current = signature;
             setAiPlanStatus('ready');
@@ -656,6 +683,8 @@ export default function App() {
             transcriptSegments,
             headings,
             annotations: annotationsForExport ?? [],
+            zones: zonesForExport ?? [],
+            surface: surfaceForExport ?? undefined,
             videoUri,
             gpsTrack: track,
             corners,
@@ -694,7 +723,7 @@ export default function App() {
           setIsExporting(false);
         }
       },
-      [aiAnnotations, corners, headings, metrics, transcript, transcriptSegments, track, videoUri],
+      [aiAnnotations, aiSurface, aiZones, corners, headings, metrics, transcript, transcriptSegments, track, videoUri],
   );
 
   const processTranscription = useCallback(
@@ -783,6 +812,8 @@ export default function App() {
     setIsRecordingAnnotationEdit(false);
     setAnnotationEditStatus(null);
     setAiAnnotations([]);
+    setAiZones([]);
+    setAiSurface(null);
     setAiPlanStatus('idle');
     setAiPlanError(null);
     layoutSignatureRef.current = null;
@@ -830,15 +861,19 @@ export default function App() {
           }
           setAnnotationEditStatus('Updating map with ChatGPT...');
           setAiPlanStatus('planning');
-          const updated = await editAiAnnotations({
+          const updatedPlan = await editAiAnnotations({
             layout: exportData,
             corners,
             transcriptSegments,
             headings,
             existingAnnotations: aiAnnotations,
+            existingZones: aiZones,
+            surface: aiSurface,
             editTranscript,
           });
-          setAiAnnotations(updated);
+          setAiAnnotations(updatedPlan.annotations);
+          setAiZones(updatedPlan.zones);
+          setAiSurface(updatedPlan.surface ?? null);
           aiPlanSignatureRef.current = buildAiPlanSignature(exportData, transcriptSegments, headings);
           setAiPlanStatus('ready');
           setAiPlanError(null);
@@ -855,7 +890,7 @@ export default function App() {
           await deleteFileIfExists(audioUri);
         }
       },
-      [aiAnnotations, corners, deleteFileIfExists, exportData, headings, transcriptSegments],
+      [aiAnnotations, aiSurface, aiZones, corners, deleteFileIfExists, exportData, headings, transcriptSegments],
   );
 
   const startAnnotationEditRecording = useCallback(async () => {
@@ -974,6 +1009,7 @@ export default function App() {
                 exportData={exportData}
                 durationSeconds={recordingSeconds}
                 annotations={aiAnnotations}
+                zones={aiZones}
                 aiPlanStatus={aiPlanStatus}
                 aiPlanError={aiPlanError}
                 onAnnotationEdit={handleAnnotationEditRequest}
@@ -1185,16 +1221,22 @@ type AiPlanArgs = {
   transcriptSegments: TranscriptSegment[];
   headings: HeadingSample[];
   existingAnnotations?: GardenAnnotation[];
+  existingZones?: GardenZone[];
+  surface?: string | null;
 };
 
-async function planAiAnnotations(args: AiPlanArgs): Promise<GardenAnnotation[]> {
-  const { layout, transcriptSegments, headings, corners, existingAnnotations } = args;
+async function planAiAnnotations(args: AiPlanArgs): Promise<PlannerSuggestion> {
+  const { layout, transcriptSegments, headings, corners, existingAnnotations, existingZones, surface } = args;
   if (!layout?.points?.length || !transcriptSegments.length) {
-    return existingAnnotations ?? [];
+    return {
+      annotations: existingAnnotations ?? [],
+      zones: existingZones ?? [],
+      surface: surface ?? null,
+    };
   }
 
   try {
-    const aiObjects = await suggestAnnotationsWithChatGPT({
+    const plannerSuggestion = await suggestGardenPlanWithChatGPT({
       layout: {
         points: layout.points,
         closed: layout.closed,
@@ -1208,12 +1250,21 @@ async function planAiAnnotations(args: AiPlanArgs): Promise<GardenAnnotation[]> 
       transcriptSegments,
       headings,
       existingAnnotations,
+      existingZones,
+      surface,
     });
-    const normalized = normalizeAnnotationsForLayout(aiObjects, layout);
-    return [...(existingAnnotations ?? []), ...normalized];
+    return {
+      annotations: normalizeAnnotationsForLayout(plannerSuggestion.annotations, layout),
+      zones: normalizeZonesForLayout(plannerSuggestion.zones, layout),
+      surface: plannerSuggestion.surface ?? surface ?? null,
+    };
   } catch (error) {
     console.warn('AI object placement failed', error);
-    return existingAnnotations ?? [];
+    return {
+      annotations: existingAnnotations ?? [],
+      zones: existingZones ?? [],
+      surface: surface ?? null,
+    };
   }
 }
 
@@ -1221,17 +1272,34 @@ type AiEditArgs = AiPlanArgs & {
   editTranscript: string;
 };
 
-async function editAiAnnotations(args: AiEditArgs): Promise<GardenAnnotation[]> {
-  const { layout, corners, transcriptSegments, headings, existingAnnotations, editTranscript } = args;
+async function editAiAnnotations(args: AiEditArgs): Promise<PlannerSuggestion> {
+  const {
+    layout,
+    corners,
+    transcriptSegments,
+    headings,
+    existingAnnotations,
+    existingZones,
+    surface,
+    editTranscript,
+  } = args;
   if (!layout?.points?.length) {
-    return existingAnnotations ?? [];
+    return {
+      annotations: existingAnnotations ?? [],
+      zones: existingZones ?? [],
+      surface: surface ?? null,
+    };
   }
   if (!editTranscript?.trim()) {
-    return existingAnnotations ?? [];
+    return {
+      annotations: existingAnnotations ?? [],
+      zones: existingZones ?? [],
+      surface: surface ?? null,
+    };
   }
 
   try {
-    const aiObjects = await editAnnotationsWithChatGPT(
+    const plannerSuggestion = await editGardenPlanWithChatGPT(
         {
           layout: {
             points: layout.points,
@@ -1246,13 +1314,23 @@ async function editAiAnnotations(args: AiEditArgs): Promise<GardenAnnotation[]> 
           transcriptSegments,
           headings,
           existingAnnotations,
+          existingZones,
+          surface,
         },
         editTranscript,
     );
-    return normalizeAnnotationsForLayout(aiObjects, layout);
+    return {
+      annotations: normalizeAnnotationsForLayout(plannerSuggestion.annotations, layout),
+      zones: normalizeZonesForLayout(plannerSuggestion.zones, layout),
+      surface: plannerSuggestion.surface ?? surface ?? null,
+    };
   } catch (error) {
     console.warn('AI object edit failed', error);
-    return existingAnnotations ?? [];
+    return {
+      annotations: existingAnnotations ?? [],
+      zones: existingZones ?? [],
+      surface: surface ?? null,
+    };
   }
 }
 
@@ -1276,7 +1354,7 @@ function normalizeAnnotationsForLayout(
     if (pt.y < minY) minY = pt.y;
     if (pt.y > maxY) maxY = pt.y;
   }
-  return annotations.map((ann) => ({
+  const clamped = annotations.map((ann) => ({
     id: ann.id ?? createAnnotationId(),
     type: ann.type?.trim() || 'unknown',
     label: ann.label?.trim(),
@@ -1284,6 +1362,47 @@ function normalizeAnnotationsForLayout(
     x: clampNumber(ann.x, minX, maxX),
     y: clampNumber(ann.y, minY, maxY),
   }));
+  return enforceMinSpacing(clamped, { minX, maxX, minY, maxY });
+}
+
+function normalizeZonesForLayout(
+    zones: GardenZone[] | undefined,
+    layout: CornerExportData,
+): GardenZone[] {
+  if (!zones?.length) {
+    return [];
+  }
+  if (!layout.points?.length) {
+    return [];
+  }
+  let minX = layout.points[0].x;
+  let maxX = layout.points[0].x;
+  let minY = layout.points[0].y;
+  let maxY = layout.points[0].y;
+  for (const pt of layout.points) {
+    if (pt.x < minX) minX = pt.x;
+    if (pt.x > maxX) maxX = pt.x;
+    if (pt.y < minY) minY = pt.y;
+    if (pt.y > maxY) maxY = pt.y;
+  }
+  return zones
+      .map((zone, index) => {
+        const normalizedPoints = (zone.points ?? [])
+            .map((point) => ({
+              x: clampNumber(point.x, minX, maxX),
+              y: clampNumber(point.y, minY, maxY),
+            }))
+            .filter((pt) => Number.isFinite(pt.x) && Number.isFinite(pt.y));
+        if (normalizedPoints.length < 3) {
+          return null;
+        }
+        return {
+          ...zone,
+          id: zone.id ?? `zone_${index}_${createAnnotationId()}`,
+          points: normalizedPoints,
+        };
+      })
+      .filter((zone): zone is GardenZone => Boolean(zone));
 }
 
 function clampNumber(value: number, min: number, max: number) {
@@ -1291,6 +1410,49 @@ function clampNumber(value: number, min: number, max: number) {
     return min;
   }
   return Math.min(Math.max(value, min), max);
+}
+
+function enforceMinSpacing(
+    annotations: GardenAnnotation[],
+    bounds: { minX: number; maxX: number; minY: number; maxY: number },
+): GardenAnnotation[] {
+  if (annotations.length < 2) {
+    return annotations;
+  }
+
+  const spanX = bounds.maxX - bounds.minX;
+  const spanY = bounds.maxY - bounds.minY;
+  // Keep objects visually apart; fall back to a small absolute spacing if the garden is tiny.
+  const minSpacing = Math.max(Math.max(spanX, spanY) * 0.012, 0.5);
+  const minSpacingSq = minSpacing * minSpacing;
+
+  const placed: GardenAnnotation[] = [];
+
+  for (const ann of annotations) {
+    let candidate = { ...ann };
+    let attempts = 0;
+    while (
+        placed.some(
+            (p) => {
+              const dx = candidate.x - p.x;
+              const dy = candidate.y - p.y;
+              return dx * dx + dy * dy < minSpacingSq;
+            },
+        ) &&
+        attempts < 24
+    ) {
+      // Spread in a spiral: try 8 directions, then increase radius.
+      const radius = minSpacing * (1 + Math.floor(attempts / 8));
+      const angle = ((attempts % 8) / 8) * Math.PI * 2;
+      const newX = clampNumber(candidate.x + Math.cos(angle) * radius, bounds.minX, bounds.maxX);
+      const newY = clampNumber(candidate.y + Math.sin(angle) * radius, bounds.minY, bounds.maxY);
+      candidate = { ...candidate, x: newX, y: newY };
+      attempts += 1;
+    }
+    placed.push(candidate);
+  }
+
+  return placed;
 }
 
 function createAnnotationId() {
