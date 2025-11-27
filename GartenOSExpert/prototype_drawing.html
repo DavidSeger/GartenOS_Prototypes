@@ -42,6 +42,10 @@
     .app{display:grid;grid-template-columns:320px 1fr;gap:16px;flex:1;min-height:0;padding:8px 16px 16px}
     .panel{background:var(--panel);border:1px solid #1a3a2a;border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.35);overflow:hidden}
     .sidebar{display:flex;flex-direction:column;overflow:auto}
+    .sidebar::-webkit-scrollbar{width:8px}
+    .sidebar::-webkit-scrollbar-track{background:#0a1b14;border-radius:999px}
+    .sidebar::-webkit-scrollbar-thumb{background:linear-gradient(180deg,#1c6d45,#155a39);border-radius:999px;border:1px solid #1a3a2a}
+    .sidebar{scrollbar-width:thin;scrollbar-color:#1c6d45 #0a1b14}
     .section{padding:14px 14px 10px;border-bottom:1px solid #1a3a2a}
     .section:last-child{border-bottom:none}
     h2{font-size:16px;margin:0 0 8px 0}
@@ -73,6 +77,7 @@
     .zone.grass{fill:rgba(74,201,123,.35);stroke:#3adf7d}
     .zone.concrete{fill:rgba(170,176,192,.32);stroke:#9ba3b5}
     .zone.soil{fill:rgba(196,130,74,.35);stroke:#d17a2c}
+    .zone.water{fill:rgba(59,130,246,.30);stroke:#1d4ed8}
     .handle{cursor:pointer}
     .draggable{cursor:grab}
     .badge{display:inline-block;padding:2px 6px;border-radius:6px;background:#0c3523;border:1px solid #275940;color:#d8ffe8}
@@ -93,11 +98,11 @@
   </div>
 </header>
 
-<div class="app">
-  <!-- Sidebar -->
-  <aside class="panel sidebar" id="sidebar">
-    <div class="section">
-      <h2>Drawing</h2>
+  <div class="app">
+    <!-- Sidebar -->
+    <aside class="panel sidebar" id="sidebar">
+      <div class="section">
+        <h2>Drawing</h2>
       <div class="row">
         <button class="btn primary" id="btnStart">Draw boundary</button>
         <button class="btn" id="btnClose">Close boundary</button>
@@ -149,11 +154,25 @@
       <p class="muted tiny">Sets the fill for the main boundary polygon.</p>
     </div>
 
-    <div class="section">
+  <div class="section">
       <h2>Annotations</h2>
       <div class="row" style="margin-top:10px">
         <button class="btn" id="btnTree">🌳 Add tree</button>
         <button class="btn" id="btnWater">💧 Add water</button>
+      </div>
+      <div class="row" id="treeSizePicker" style="margin-top:6px; display:none; align-items:flex-end; gap:8px">
+        <div style="flex:1">
+          <label for="treeSizeSelect">Tree size</label>
+          <select id="treeSizeSelect">
+            <option value="small">Small</option>
+            <option value="medium" selected>Medium</option>
+            <option value="large">Large</option>
+          </select>
+        </div>
+        <div class="row" style="gap:6px">
+          <button class="btn primary" id="btnTreeConfirm">Add</button>
+          <button class="btn ghost" id="btnTreeCancel">Cancel</button>
+        </div>
       </div>
       <div class="list" id="annoList" style="margin-top:10px"></div>
     </div>
@@ -162,12 +181,13 @@
       <h2>Add Zones</h2>
       <div class="row">
         <div style="flex:1">
-          <label for="zoneType">Zone type</label>
-          <select id="zoneType">
-            <option value="grass">Grass</option>
-            <option value="concrete">Concrete</option>
-            <option value="soil">Soil</option>
-          </select>
+      <label for="zoneType">Zone type</label>
+      <select id="zoneType">
+        <option value="grass">Grass</option>
+        <option value="concrete">Concrete</option>
+        <option value="soil">Soil</option>
+        <option value="water">Water</option>
+      </select>
         </div>
         <div class="row" style="flex:1; justify-content:flex-end">
           <button class="btn" id="btnStartZone">Start zone</button>
@@ -198,7 +218,10 @@
       <h2>Save / Load</h2>
       <div class="row">
         <button class="btn" id="btnExport">Export JSON</button>
-        <input id="fileInput" type="file" accept="application/json" />
+        <label class="btn ghost" style="cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
+          <span>Choose file</span>
+          <input id="fileInput" type="file" accept="application/json" style="display:none" />
+        </label>
       </div>
     </div>
   </aside>
@@ -235,6 +258,10 @@
   const btnTree = document.getElementById('btnTree');
   const btnWater = document.getElementById('btnWater');
   const annoList = document.getElementById('annoList');
+  const treeSizePicker = document.getElementById('treeSizePicker');
+  const treeSizeSelect = document.getElementById('treeSizeSelect');
+  const btnTreeConfirm = document.getElementById('btnTreeConfirm');
+  const btnTreeCancel = document.getElementById('btnTreeCancel');
 
   const areaOut = document.getElementById('areaOut');
   const perimOut = document.getElementById('perimOut');
@@ -483,7 +510,21 @@
   btnApplySurface.addEventListener('click', ()=> setSurface(surfaceSel.value))
   surfaceSel.addEventListener('change', ()=> setSurface(surfaceSel.value))
 
-  btnTree.addEventListener('click', ()=> addIcon('tree'))
+  btnTree.addEventListener('click', ()=> {
+    if (treeSizePicker) treeSizePicker.style.display = 'flex';
+  });
+  if (btnTreeConfirm) {
+    btnTreeConfirm.addEventListener('click', ()=> {
+      const size = treeSizeSelect ? treeSizeSelect.value : 'medium';
+      addIcon('tree', size);
+      if (treeSizePicker) treeSizePicker.style.display = 'none';
+    });
+  }
+  if (btnTreeCancel) {
+    btnTreeCancel.addEventListener('click', ()=> {
+      if (treeSizePicker) treeSizePicker.style.display = 'none';
+    });
+  }
   btnWater.addEventListener('click', ()=> addIcon('water'))
 
   // Zones controls
@@ -496,18 +537,27 @@
     state.zoneDraft = []; setMode('closed'); draw();
   })
 
-  function addIcon(type){
+  function addIcon(type, sizeOverride){
     const x = state.points.length? avg(state.points.map(p=>p.x)) : parseFloat(stage.dataset.w)/2;
     const y = state.points.length? avg(state.points.map(p=>p.y)) : parseFloat(stage.dataset.h)/2;
     const id = 'a'+Math.random().toString(36).slice(2,8);
-    state.annotations.push({id,type,x,y});
+    const size = type === 'tree' ? (sizeOverride || 'medium') : undefined;
+    state.annotations.push({id,type,x,y,size});
     draw();
   }
+
+  function treeFontSize(size){
+    if(size==='small') return 18;
+    if(size==='large') return 28;
+    return 22;
+  }
+
 
   function addIconEl(anno){
     const text = svg('text',{x:anno.x,y:anno.y, class:'draggable', 'data-id':anno.id});
     text.textContent = anno.type==='tree'?'🌳':'💧';
-    text.style.fontSize = '24px'; text.style.userSelect='none';
+    const fontSize = anno.type==='tree' ? treeFontSize(anno.size) : 22;
+    text.style.fontSize = `${fontSize}px`; text.style.userSelect='none';
     gIcons.appendChild(text);
 
     // drag
@@ -539,7 +589,8 @@
     annoList.innerHTML='';
     state.annotations.forEach(a=>{
       const row = document.createElement('div'); row.className='list-item';
-      row.innerHTML = `<div><span class="badge">${a.type==='tree'?'🌳 Tree':'💧 Water'}</span></div>`;
+      const sizeLabel = a.type==='tree' && a.size ? ` (${a.size})` : '';
+      row.innerHTML = `<div><span class="badge">${a.type==='tree'?'🌳 Tree':'💧 Water'}${sizeLabel}</span></div>`;
       const del = document.createElement('button'); del.className='btn ghost'; del.textContent='Remove'; del.addEventListener('click',()=>{ state.annotations = state.annotations.filter(x=>x.id!==a.id); draw() })
       row.appendChild(del); annoList.appendChild(row);
     })
@@ -642,8 +693,8 @@
     reader.readAsText(file);
   })
 
-  // Initial
-  draw();
+// Initial
+draw();
 </script>
 </body>
 </html>

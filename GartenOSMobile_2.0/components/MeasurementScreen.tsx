@@ -122,9 +122,11 @@ const MeasurementScreen: React.FC<MeasurementScreenProps> = ({ onNavigate, layou
                     ))}
                     {(annotations ?? []).map((ann) => {
                       const point = fitted.toFit({ x: ann.x, y: ann.y });
+                      const iconSize =
+                        ann.size === 'small' ? 12 : ann.size === 'large' ? 20 : 16;
                       return (
                         <G key={ann.id} x={point.x} y={point.y}>
-                          {getAnnotationIcon(ann.type, 16)}
+                          {getAnnotationIcon(ann.type, iconSize)}
                         </G>
                       );
                     })}

@@ -25,6 +25,7 @@ export type GardenAnnotation = {
   y: number;
   label?: string;
   confidence?: number;
+  size?: 'small' | 'medium' | 'large';
 };
 
 export type ObjectPlannerContext = {
@@ -42,6 +43,7 @@ type PlannerResponse = {
     y: number;
     label?: string;
     confidence?: number;
+    size?: 'small' | 'medium' | 'large';
   }>;
 };
 
@@ -63,6 +65,8 @@ export async function suggestAnnotationsWithChatGPT(
       '' +
       'Your ONLY job is to suggest NEW object placements (trees, shrubs, water, beds, structures) as map coordinates' +
       ' and append them to the existing annotations according to the provided schema. ' +
+      'When trees are mentioned, infer size as small/medium/large from the transcript (adjectives like small, young, sapling, big, mature, tall). ' +
+      'If size is not clearly stated, default tree size to medium. ' +
       '' +
       'Non-negotiable restraints: ' +
       '• Never alter the garden polygon or its points. ' +
@@ -146,6 +150,7 @@ export async function suggestAnnotationsWithChatGPT(
                     confidence: { type: 'number', minimum: 0, maximum: 1 },
                     x: { type: 'number' },
                     y: { type: 'number' },
+                    size: { type: 'string', enum: ['small', 'medium', 'large'] },
                   },
                 },
               },
@@ -199,6 +204,7 @@ export async function suggestAnnotationsWithChatGPT(
     y: obj.y,
     label: obj.label?.trim(),
     confidence: obj.confidence,
+    size: obj.size,
   }));
 }
 

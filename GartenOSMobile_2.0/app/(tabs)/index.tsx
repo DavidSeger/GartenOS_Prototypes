@@ -63,7 +63,13 @@ export default function App() {
   const [headings, setHeadings] = useState<HeadingSample[]>([]);
 
   type XY = { x: number; y: number };
-  type Annotation = { id: string; type: 'tree' | 'water' | string; x: number; y: number };
+  type Annotation = {
+    id: string;
+    type: 'tree' | 'water' | string;
+    x: number;
+    y: number;
+    size?: 'small' | 'medium' | 'large';
+  };
   type Zone = { id: string; type?: string; points: XY[] };
 
   type CornerDrawing = {
@@ -138,6 +144,7 @@ export default function App() {
     if (t === 'soil') return '#8B5A2B';
     if (t === 'grass') return '#2E8B57';
     if (t === 'concrete') return '#9E9E9E';
+    if (t === 'water') return '#3b82f6';
     return '#888888';
   }
   function zoneStrokeColor(type?: string) {
@@ -145,6 +152,7 @@ export default function App() {
     if (t === 'soil') return '#5E3B1C';
     if (t === 'grass') return '#1F5E3B';
     if (t === 'concrete') return '#707070';
+    if (t === 'water') return '#1d4ed8';
     return '#666666';
   }
 
@@ -803,9 +811,11 @@ export default function App() {
                                     ))}
                                     {(cornerDrawing.annotations ?? []).map(a => {
                                       const p = toFit({ x: a.x, y: a.y });
+                                      const iconSize =
+                                          a.size === 'small' ? 12 : a.size === 'large' ? 20 : 16;
                                       return (
                                           <G key={a.id} x={p.x} y={p.y}>
-                                            {getAnnotationIcon(a.type, 16)}
+                                            {getAnnotationIcon(a.type, iconSize)}
                                           </G>
                                       );
                                     })}
@@ -827,9 +837,11 @@ export default function App() {
                                     ))}
                                     {(cornerDrawing.annotations ?? []).map(a => {
                                       const p = toFit({ x: a.x, y: a.y });
+                                      const iconSize =
+                                          a.size === 'small' ? 12 : a.size === 'large' ? 20 : 16;
                                       return (
                                           <G key={a.id} x={p.x} y={p.y}>
-                                            {getAnnotationIcon(a.type, 16)}
+                                            {getAnnotationIcon(a.type, iconSize)}
                                           </G>
                                       );
                                     })}
