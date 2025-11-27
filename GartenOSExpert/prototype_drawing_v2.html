@@ -1,0 +1,1135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>GardenOS Expert v2</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+  <style>
+    :root{
+      --bg:#06150e; --panel:#0c2217; --muted:#88a195; --text:#e6ffef; --accent:#58e09b; --good:#8dffb7; --warn:#ffe08a; --bad:#ff9f9f
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font:500 14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial}
+    body{display:flex;flex-direction:column}
+    .page-header{
+      padding:8px 16px 8px;
+      background: #0a1f16e0;
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid #1a3a2a;
+      position:relative; z-index:1001; /* Above leaflet */
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .page-header h1{
+      margin:0;
+      font-size:18px;
+      letter-spacing:0.02em;
+    }
+
+    .app{display:grid;grid-template-columns:320px 1fr;flex:1;min-height:0; gap: 16px; padding: 0 16px 16px;}
+    .panel{background:var(--panel);border:1px solid #1a3a2a;box-shadow:0 10px 30px rgba(0,0,0,.35);overflow:hidden}
+    .sidebar{display:flex;flex-direction:column;overflow:auto; z-index:1001;}
+    .sidebar::-webkit-scrollbar{width:8px}
+    .sidebar::-webkit-scrollbar-track{background:#0a1b14;border-radius:999px}
+    .sidebar::-webkit-scrollbar-thumb{background:linear-gradient(180deg,#1c6d45,#155a39);border-radius:999px;border:1px solid #1a3a2a}
+    .sidebar{scrollbar-width:thin;scrollbar-color:#1c6d45 #0a1b14}
+
+    .section{padding:14px 14px 10px;border-bottom:1px solid #1a3a2a}
+    .section:last-child{border-bottom:none}
+    h2{font-size:16px;margin:0 0 8px 0}
+    label{display:block;margin:8px 0 6px;color:var(--muted)}
+    .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .btn{appearance:none;border:1px solid #275940;background:#123d29;color:var(--text);padding:8px 10px;border-radius:12px;cursor:pointer;transition:.15s;box-shadow:inset 0 0 0 1px rgba(255,255,255,.03)}
+    .btn:hover{transform:translateY(-1px);box-shadow:0 6px 16px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.06)}
+    .btn.primary{background:linear-gradient(180deg,#1c6d45,#155a39);border-color:#2f9464}
+    .btn.ghost{background:transparent;border-color:#275940}
+    .btn.warn{border-color:#6b4b00;background:#2a1d00;color:#ffe08a}
+    .btn.active{background:#1c6d45; border-color:#2f9464}
+    input[type="number"], input[type="text"], select{width:100%;padding:8px 10px;border-radius:10px;border:1px solid #275940;background:#0a2d1e;color:var(--text)}
+    .muted{color:var(--muted)}
+    .pill{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border-radius:999px;border:1px dashed #2c6b49;color:#c8f3de; backdrop-filter:blur(6px);background:rgba(7,31,21,.45);}
+    .metrics{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    .metric{background:#0b2a1c;border:1px solid #1f5f41;border-radius:12px;padding:10px}
+    .metric .k{font-size:18px;font-weight:700}
+
+    /* Map / Canvas */
+    .map-wrapper{position:relative;width:100%;height:100%; border-radius: 16px; overflow: hidden; border: 1px solid #1a3a2a;}
+    #map-container{width:100%;height:100%;background:var(--bg)}
+    /* Custom Zoom Control Styles */
+    .leaflet-control-zoom {
+      border: 1px solid #1a3a2a !important;
+      background-color: var(--panel) !important;
+      border-radius: 12px !important;
+      box-shadow: 0 4px 12px rgba(0,0,0,.3);
+    }
+    .leaflet-control-zoom-in,
+    .leaflet-control-zoom-out {
+      background-color: var(--panel) !important;
+      color: var(--text) !important;
+      width: 32px !important;
+      height: 32px !important;
+      line-height: 32px !important;
+      font-size: 22px !important;
+      font-weight: bold !important;
+      text-decoration: none !important;
+    }
+    .leaflet-control-zoom-in {
+      border-top-left-radius: 11px !important;
+      border-top-right-radius: 11px !important;
+    }
+    .leaflet-control-zoom-out {
+      border-bottom-left-radius: 11px !important;
+      border-bottom-right-radius: 11px !important;
+    }
+    .leaflet-control-zoom-in:hover,
+    .leaflet-control-zoom-out:hover {
+      background-color: #123d29 !important;
+    }
+    .leaflet-bar a, .leaflet-bar a:hover {
+      border-bottom: 1px solid #1a3a2a !important;
+    }
+    .leaflet-bar a:last-child {
+      border-bottom: none !important;
+    }
+
+    .leaflet-control-attribution{background:var(--panel) !important; color:var(--text) !important;}
+    .leaflet-control-attribution a{color: var(--accent) !important}
+    
+    /* SVG elements are now managed by Leaflet, pointer-events are set on the elements themselves */
+    .leaflet-overlay-pane svg{
+        pointer-events: none;
+    }
+
+    /* Overlays */
+    .top-bar{position:absolute;top:10px;left:50%;transform:translateX(-50%);display:flex;gap:8px;z-index:1000;align-items:center;background:var(--panel);border:1px solid #1a3a2a;padding:6px;border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.35);}
+    #address-input{width:300px}
+    .bottom-bar{position:absolute;bottom:10px;left:10px;display:flex;gap:8px;z-index:1000;}
+
+    /* SVG Drawing Styles */
+    .edge-label{font-size:12px;fill:#dcffe9;text-shadow:0 1px 0 #0007; pointer-events:none; user-select:none;}
+    .vert{fill:#58e09b;stroke:#001a10;stroke-width:1.5; pointer-events:all;cursor:pointer}
+    .edge{stroke:#58e09b;stroke-width:2; pointer-events:all;cursor:pointer}
+    .edge.calibrated{stroke:#8dffb7}
+    .poly{fill:rgba(88,224,155,.12);stroke:#9ff3c8;stroke-width:2; pointer-events:none}
+    .zone{stroke-width:2;pointer-events:none}
+    .zone.grass{fill:rgba(74,201,123,.35);stroke:#3adf7d}
+    .zone.concrete{fill:rgba(170,176,192,.32);stroke:#9ba3b5}
+    .zone.soil{fill:rgba(196,130,74,.35);stroke:#d17a2c}
+    .zone.water{fill:rgba(59,130,246,.30);stroke:#1d4ed8}
+    .draggable{cursor:grab; pointer-events:all}
+    .badge{display:inline-block;padding:2px 6px;border-radius:6px;background:#0c3523;border:1px solid #275940;color:#d8ffe8}
+    .list{max-height:180px;overflow:auto;border:1px solid #1a3a2a;border-radius:10px}
+    .list-item{display:flex;justify-content:space-between;gap:6px;padding:8px 10px;border-bottom:1px dashed #1f5f41}
+    .list-item:last-child{border-bottom:none}
+    .tiny{font-size:12px;color:#c0e9d1}
+
+    .page-header .pill {
+      border-style: solid;
+      border-color: var(--accent);
+      background: #0e3b28;
+      color: var(--text);
+    }
+    .page-header .pill strong {
+        color: var(--good);
+    }
+  </style>
+</head>
+<body>
+<header class="page-header">
+  <h1>Garden Mapper (Satellite)</h1>
+  <span class="pill"><span id="mode-icon" style="margin-right: 6px;"></span>Mode: <strong id="mode">idle</strong></span>
+</header>
+
+  <div class="app">
+    <!-- Sidebar -->
+    <aside class="panel sidebar" id="sidebar">
+      <div class="section">
+        <h2>Drawing</h2>
+      <div class="row">
+        <button class="btn primary" id="btnStart">Draw boundary</button>
+        <button class="btn" id="btnClose">Close boundary</button>
+        <button class="btn" id="btnUndo">Undo last point</button>
+        <button class="btn warn" id="btnClear">Start over</button>
+      </div>
+      <p class="muted" style="margin-top:6px">
+        Click on the map to add vertices of your garden. Close the boundary to enable scaling and zones.
+      </p>
+    </div>
+
+    <div class="section">
+      <h2>Scale &amp; Units</h2>
+      <div class="row" style="align-items: flex-end;">
+        <div style="flex:1">
+          <label for="calLen">Length of selected edge</label>
+          <input id="calLen" type="number" step="0.01" placeholder="e.g. 7.5" />
+        </div>
+        <div style="flex:1">
+          <label for="unitSelect">Units</label>
+          <select id="unitSelect">
+            <option value="m">meters</option>
+            <option value="ft">feet</option>
+          </select>
+        </div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button class="btn" id="btnCalib">Set calibration</button>
+        <span class="pill" id="scaleInfo">Scale: <span id="scaleVal">—</span></span>
+      </div>
+      <p class="muted tiny">
+        Tip: Click an edge in the canvas (turns green) to select it, then enter its real length and calibrate.
+      </p>
+    </div>
+
+    <div class="section">
+      <h2>Ground Type</h2>
+      <div class="row">
+        <div style="flex:1">
+          <label for="surface">Main ground surface</label>
+          <select id="surface">
+            <option value="grass">Grass</option>
+            <option value="concrete">Concrete</option>
+            <option value="soil">Soil</option>
+          </select>
+        </div>
+        <button class="btn primary" id="btnApplySurface" style="align-self:flex-end">Apply</button>
+      </div>
+      <p class="muted tiny">Sets the fill for the main boundary polygon.</p>
+    </div>
+
+  <div class="section">
+      <h2>Annotations</h2>
+      <div class="row" style="margin-top:10px">
+        <button class="btn" id="btnTree">🌳 Add tree</button>
+      </div>
+      <div class="row" id="treeSizePicker" style="margin-top:6px; display:none; align-items:flex-end; gap:8px">
+        <div style="flex:1">
+          <label for="treeSizeSelect">Tree size</label>
+          <select id="treeSizeSelect">
+            <option value="small">Small</option>
+            <option value="medium" selected>Medium</option>
+            <option value="large">Large</option>
+          </select>
+        </div>
+        <div class="row" style="gap:6px">
+          <button class="btn primary" id="btnTreeConfirm">Add</button>
+          <button class="btn ghost" id="btnTreeCancel">Cancel</button>
+        </div>
+      </div>
+      <div class="list" id="annoList" style="margin-top:10px"></div>
+    </div>
+
+    <div class="section">
+      <h2>Add Zones</h2>
+      <div class="row">
+        <div style="flex:1">
+      <label for="zoneType">Zone type</label>
+      <select id="zoneType">
+        <option value="grass">Grass</option>
+        <option value="concrete">Concrete</option>
+        <option value="soil">Soil</option>
+        <option value="water">Water</option>
+      </select>
+        </div>
+        <div class="row" style="flex:1; justify-content:flex-end">
+          <button class="btn" id="btnStartZone">Start zone</button>
+          <button class="btn" id="btnCloseZone">Close zone</button>
+          <button class="btn primary" id="btnSaveZone">Save zone</button>
+        </div>
+      </div>
+      <div class="list" id="zoneList" style="margin-top:10px"></div>
+    </div>
+
+    <div class="section">
+      <h2>Metrics</h2>
+      <div class="metrics">
+        <div class="metric">
+          <div class="k" id="areaOut">—</div>
+          <div class="muted tiny">Area</div>
+        </div>
+        <div class="metric">
+          <div class="k" id="perimOut">—</div>
+          <div class="muted tiny">Perimeter</div>
+        </div>
+      </div>
+      <label style="margin-top:10px">Edges</label>
+      <div class="list" id="edgeList"></div>
+    </div>
+
+    <div class="section">
+      <h2>Save / Load</h2>
+      <div class="row">
+        <button class="btn" id="btnExport">Export JSON</button>
+        <label class="btn ghost" style="cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
+          <span>Choose file</span>
+          <input id="fileInput" type="file" accept="application/json" style="display:none" />
+        </label>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Map -->
+  <main class="map-wrapper">
+    <div id="map-container"></div>
+
+    <div class="top-bar">
+        <input type="text" id="address-input" placeholder="Enter address or lat,lng...">
+        <button id="address-search" class="btn primary">Search</button>
+    </div>
+
+    <div class="bottom-bar">
+        <button id="toggle-map-btn" class="btn active">Hide Map</button>
+        <button id="freeze-map-btn" class="btn">Freeze Map</button>
+    </div>
+  </main>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+<script>
+
+  // ----- Map Setup -----
+
+  const map = L.map('map-container', {
+
+      maxZoom: 22
+
+  }).setView([47.4239, 9.3748], 16);
+
+  
+
+  const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+
+    attribution: '',
+
+    maxZoom: 22,
+
+    tileSize: 256,
+
+    zoomOffset: 0
+
+  }).addTo(map);
+
+
+
+  // Use Leaflet's built-in SVG layer for drawing
+
+  L.svg({ pane: 'overlayPane' }).addTo(map);
+
+  const stage = map.getPane('overlayPane').querySelector('svg');
+
+
+
+
+
+  const modeEl = document.getElementById('mode');
+
+  const btnStart = document.getElementById('btnStart');
+
+  const btnClose = document.getElementById('btnClose');
+
+  const btnUndo = document.getElementById('btnUndo');
+
+  const btnClear = document.getElementById('btnClear');
+
+
+
+  const unitSelect = document.getElementById('unitSelect');
+
+  const btnCalib = document.getElementById('btnCalib');
+
+
+
+  const surfaceSel = document.getElementById('surface');
+
+  const btnApplySurface = document.getElementById('btnApplySurface');
+
+  const btnTree = document.getElementById('btnTree');
+
+  const annoList = document.getElementById('annoList');
+
+  const treeSizePicker = document.getElementById('treeSizePicker');
+
+  const treeSizeSelect = document.getElementById('treeSizeSelect');
+
+  const btnTreeConfirm = document.getElementById('btnTreeConfirm');
+
+  const btnTreeCancel = document.getElementById('btnTreeCancel');
+
+
+
+  const areaOut = document.getElementById('areaOut');
+
+  const perimOut = document.getElementById('perimOut');
+
+  
+
+  // New zone controls
+
+  const zoneType = document.getElementById('zoneType');
+
+  const btnStartZone = document.getElementById('btnStartZone');
+
+  const btnCloseZone = document.getElementById('btnCloseZone');
+
+  const btnSaveZone = document.getElementById('btnSaveZone');
+
+  const zoneList = document.getElementById('zoneList');
+
+
+
+  // New Map Controls
+
+  const addressInput = document.getElementById('address-input');
+
+  const addressSearch = document.getElementById('address-search');
+
+  const toggleMapBtn = document.getElementById('toggle-map-btn');
+
+  const freezeMapBtn = document.getElementById('freeze-map-btn');
+
+
+
+
+
+  // ----- State -----
+
+    const state = {
+
+      mode: 'idle',
+
+      points: [], // LatLngs for main boundary
+
+      closed: false,
+
+      unit: 'm',
+
+      surface: 'grass',
+
+      annotations: [], // {id, type, latlng, size}
+
+      zones: [], // {id, type, points: [LatLng]}
+
+      zoneDraft: [], // array of LatLng for the zone being drawn
+
+      mapFrozen: false,
+
+      mapVisible: true,
+
+      calibratedEdgeIndex: null,
+
+      correctionFactor: 1,
+
+    }
+
+
+
+  // ----- Initialization -----
+
+  if(surfaceSel) surfaceSel.value = state.surface;
+
+
+
+  function setMode(m){
+
+    state.mode = m;
+
+    modeEl.textContent = m;
+
+    
+
+    let cursor = '';
+
+    const isDrawing = m === 'drawing' || m === 'drawingZone';
+
+    const isPlacing = m.startsWith('placing_');
+
+
+
+    if (isDrawing || isPlacing) {
+
+      cursor = 'crosshair';
+
+      map.dragging.disable();
+
+    } else if (!state.mapFrozen) {
+
+      map.dragging.enable();
+
+    }
+
+    map.getContainer().style.cursor = cursor;
+
+  }
+
+
+
+  // ----- SVG & Coordinate Conversion -----
+
+  const gPoly = svg('g');
+
+  const gZones = svg('g');
+
+  const gEdges = svg('g');
+
+  const gLabels = svg('g');
+
+  const gVerts = svg('g');
+
+  const gIcons = svg('g');
+
+  stage.append(gPoly, gZones, gEdges, gLabels, gVerts, gIcons);
+
+
+
+  function svg(tag, attrs={}){ const el = document.createElementNS('http://www.w3.org/2000/svg', tag); for(const k in attrs) el.setAttribute(k, attrs[k]); return el }
+
+  function toLayerPoint(latlng) { return map.latLngToLayerPoint(latlng); }
+
+
+
+  // ----- Geometry -----
+
+  function distance(a,b){ return a.distanceTo(b); }
+
+  function perimeter(latlngs){ if(latlngs.length<2) return 0; let p=0; for(let i=0;i<latlngs.length;i++){ const j=(i+1)%latlngs.length; p += distance(latlngs[i], latlngs[j]) } return p; }
+
+  function polygonArea(latlngs) {
+
+      if (latlngs.length < 3) return 0;
+
+      let area = 0;
+
+      for (let i = 0; i < latlngs.length; i++) {
+
+          const j = (i + 1) % latlngs.length;
+
+          area += L.CRS.EPSG3857.project(latlngs[i]).x * L.CRS.EPSG3857.project(latlngs[j]).y;
+
+          area -= L.CRS.EPSG3857.project(latlngs[j]).x * L.CRS.EPSG3857.project(latlngs[i]).y;
+
+      }
+
+      return Math.abs(area / 2);
+
+  }
+
+
+
+  // ----- Drawing & Interaction -----
+
+  map.on('click', (e)=>{
+
+    const { latlng } = e;
+
+    if (state.mode === 'drawing') {
+
+        state.points.push(latlng);
+
+    } else if (state.mode === 'drawingZone') {
+
+        state.zoneDraft.push(latlng);
+
+    } else if (state.mode === 'placing_tree') {
+
+        const size = treeSizeSelect.value;
+
+        treeSizePicker.style.display = 'none';
+
+        addIcon('tree', latlng, size);
+
+        setMode('idle');
+
+    }
+
+    draw();
+
+  });
+
+
+
+  map.on('move', draw);
+
+  map.on('zoom', draw);
+
+
+
+  function setSurface(surface){
+
+    state.surface = surface;
+
+    if(surfaceSel) surfaceSel.value = state.surface;
+
+    draw();
+
+  }
+
+
+
+  function draw(){
+
+    gEdges.innerHTML=''; gVerts.innerHTML=''; gPoly.innerHTML=''; gLabels.innerHTML=''; gIcons.innerHTML=''; gZones.innerHTML='';
+
+
+
+    const pixelPoints = state.points.map(toLayerPoint);
+
+
+
+    // Main polygon
+
+    if(pixelPoints.length>=2){
+
+      const d = pixelPoints.map((p,i)=> (i===0?'M':'L')+`${p.x} ${p.y}`).join(' ') + (state.closed? ' Z' : '');
+
+      const polyPath = svg('path',{d, class:'poly', fill: state.closed ? surfaceFill(state.surface) : 'none' });
+
+      gPoly.appendChild(polyPath);
+
+    }
+
+
+
+    // Zones
+
+    state.zones.forEach(z => {
+
+        if(z.points.length < 3) return;
+
+        const d = z.points.map(p => toLayerPoint(p)).map((p,i)=>(i===0?'M':'L')+`${p.x} ${p.y}`).join(' ') + ' Z';
+
+        gZones.appendChild(svg('path', { d, class:`zone ${z.type}`}));
+
+    });
+
+    // Zone Draft
+
+    if(state.zoneDraft.length) {
+
+        const d = state.zoneDraft.map(p => toLayerPoint(p)).map((p,i)=>(i===0?'M':'L')+`${p.x} ${p.y}`).join(' ');
+
+        const path = svg('path',{d, class:'zone '+zoneType.value, 'stroke-dasharray':'6 6', fill:'none'});
+
+        gZones.appendChild(path);
+
+        state.zoneDraft.forEach((p, idx) => {
+
+            const c = toLayerPoint(p);
+
+            gVerts.appendChild(svg('circle',{cx:c.x, cy:c.y, r:4, class:'vert'}));
+
+        });
+
+    }
+
+
+
+    // Edges & labels
+
+    for(let i=0; i<pixelPoints.length - (state.closed?0:1); i++){
+
+      const a_ll = state.points[i];
+
+      const b_ll = state.points[(i+1)%state.points.length];
+
+      const a_px = pixelPoints[i];
+
+      const b_px = pixelPoints[(i+1)%state.points.length];
+
+
+
+            if (!a_px || !b_px) continue;
+
+
+
+      
+
+
+
+            const line = svg('line',{x1:a_px.x,y1:a_px.y,x2:b_px.x,y2:b_px.y, class:'edge' + (state.calibratedEdgeIndex === i ? ' calibrated' : '')});
+
+
+
+            line.addEventListener('click', (ev)=>{ ev.stopPropagation(); selectEdge(i); });
+
+
+
+            gEdges.appendChild(line);
+
+
+
+      
+
+
+
+                  const mid_px = {x:(a_px.x+b_px.x)/2, y:(a_px.y+b_px.y)/2};
+
+
+
+      
+
+
+
+                  const text = svg('text',{x:mid_px.x+6,y:mid_px.y-6, class:'edge-label'});
+
+
+
+      
+
+
+
+                  let displayLen = state.unit === 'ft' ? distance(a_ll,b_ll) * 3.28084 : distance(a_ll,b_ll);
+
+
+
+      
+
+
+
+                  displayLen *= state.correctionFactor;
+
+
+
+      
+
+
+
+                  text.textContent = fmt(displayLen,2)+ ' '+ state.unit;
+
+
+
+      
+
+
+
+                  gLabels.appendChild(text);
+
+
+
+          }
+
+
+
+    // Vertices
+
+    pixelPoints.forEach((p,idx)=>{
+
+      const c = svg('circle',{cx:p.x, cy:p.y, r:5, class:'vert'});
+
+      c.addEventListener('mousedown', startDragPoint(state.points, idx));
+
+      gVerts.appendChild(c);
+
+    });
+
+
+
+    // Icons
+
+    state.annotations.forEach(addIconEl);
+
+
+
+    updateMetrics();
+
+    renderAnnoList();
+
+  }
+
+
+
+  function surfaceFill(s){ return {'grass':'rgba(74,201,123,.32)','concrete':'rgba(170,176,192,.30)','soil':'rgba(196,130,74,.32)'}[s] || 'rgba(88,224,155,.12)';}
+
+  function fmt(n,dp){ return Number(n).toFixed(dp); }
+
+  function unitSq(u){ return u==='m'?'m²':'ft²'; }
+
+
+
+     function startDragPoint(latlngArray, i){
+
+
+
+       return function(ev){
+
+
+
+         ev.stopPropagation();
+
+
+
+         map.dragging.disable();
+
+
+
+         const onMove = (e)=> { latlngArray[i] = e.latlng; draw(); };
+
+
+
+         const onUp = ()=>{
+
+
+
+             map.off('mousemove', onMove).off('mouseup', onUp);
+
+
+
+             if(!state.mapFrozen && !state.mode.startsWith('drawing')) map.dragging.enable();
+
+
+
+         };
+
+
+
+         map.on('mousemove', onMove).on('mouseup', onUp);
+
+
+
+       }
+
+
+
+     }
+
+
+
+   
+
+
+
+     function selectEdge(i) {
+
+
+
+       state.calibratedEdgeIndex = i;
+
+
+
+       draw();
+
+
+
+     }
+
+
+
+  // ----- Controls -----
+
+  btnStart.addEventListener('click', ()=> setMode('drawing'));
+
+  btnClose.addEventListener('click', ()=>{ if(state.points.length>=3){ state.closed=true; setMode('closed'); draw(); } });
+
+  btnUndo.addEventListener('click', ()=>{
+
+    if(state.mode==='drawingZone' && state.zoneDraft.length){ state.zoneDraft.pop(); }
+
+    else if(state.points.length > 0) { state.points.pop(); }
+
+    draw();
+
+  });
+
+  btnClear.addEventListener('click', ()=>{
+
+    Object.assign(state,{mode:'idle',points:[],closed:false,annotations:[],zones:[],zoneDraft:[],surface:'grass'});
+
+    if(surfaceSel) surfaceSel.value = state.surface;
+
+    draw();
+
+  });
+
+
+
+  unitSelect.addEventListener('change', ()=>{ state.unit = unitSelect.value; draw(); });
+
+  btnApplySurface.addEventListener('click', ()=> setSurface(surfaceSel.value));
+
+  surfaceSel.addEventListener('change', ()=> setSurface(surfaceSel.value));
+
+  btnCalib.addEventListener('click', () => {
+    if(state.calibratedEdgeIndex === null) return alert('Click an edge on the map first.');
+    const targetLen = parseFloat(calLen.value);
+    if(!(targetLen > 0)) return alert('Enter a positive number for the length.');
+
+    const i = state.calibratedEdgeIndex;
+    const a = state.points[i];
+    const b = state.points[(i + 1) % state.points.length];
+    const currentLenMeters = a.distanceTo(b);
+    if(currentLenMeters === 0) return alert("Cannot calibrate an edge with zero length.");
+
+    const currentLenInUnits = currentLenMeters * (state.unit === 'ft' ? 3.28084 : 1);
+    state.correctionFactor = targetLen / currentLenInUnits;
+    
+    const scaleInfo = document.getElementById('scaleInfo');
+    scaleInfo.innerHTML = `Scale: <span id="scaleVal">x${state.correctionFactor.toFixed(2)}</span>`;
+    draw();
+  });
+
+
+
+  // ----- Annotation Logic -----
+
+  btnTree.addEventListener('click', ()=> {
+
+    treeSizePicker.style.display = 'flex';
+
+    setMode('placing_tree');
+
+  });
+
+  btnTreeCancel.addEventListener('click', ()=> {
+
+    treeSizePicker.style.display = 'none';
+
+    setMode('idle');
+
+  });
+
+
+
+  function addIcon(type, latlng, sizeOverride){
+
+    const id = 'a'+Math.random().toString(36).slice(2,8);
+
+    const size = type === 'tree' ? (sizeOverride || 'medium') : undefined;
+
+    state.annotations.push({id, type, latlng, size});
+
+    draw();
+
+  }
+
+
+
+  function treeFontSize(size){ return {'small':18, 'large':28}[size] || 22; }
+
+
+
+  function addIconEl(anno){
+
+    const pixelPos = toLayerPoint(anno.latlng);
+
+    const text = svg('text',{x:pixelPos.x, y:pixelPos.y, class:'draggable', 'data-id':anno.id});
+
+    text.textContent = '🌳';
+
+    text.style.fontSize = `${treeFontSize(anno.size)}px`;
+
+    text.style.textAnchor = 'middle';
+
+    text.style.dominantBaseline = 'middle';
+
+    
+
+    text.addEventListener('mousedown', (ev) => {
+
+        ev.stopPropagation();
+
+        map.dragging.disable();
+
+        const onMove = (e) => { anno.latlng = e.latlng; draw(); };
+
+        const onUp = () => {
+
+            map.off('mousemove', onMove).off('mouseup', onUp);
+
+            if (!state.mapFrozen) map.dragging.enable();
+
+        };
+
+        map.on('mousemove', onMove).on('mouseup', onUp);
+
+    });
+
+    gIcons.appendChild(text);
+
+  }
+
+
+
+  function renderAnnoList(){
+
+    annoList.innerHTML='';
+
+    state.annotations.forEach(a=>{
+
+      const row = document.createElement('div'); row.className='list-item';
+
+      const sizeLabel = a.size ? ` (${a.size})` : '';
+
+      row.innerHTML = `<div><span class="badge">🌳 Tree${sizeLabel}</span></div>`;
+
+      const del = document.createElement('button'); del.className='btn ghost'; del.textContent='Remove';
+
+      del.addEventListener('click',()=>{ state.annotations = state.annotations.filter(x=>x.id!==a.id); draw(); });
+
+      row.appendChild(del); annoList.appendChild(row);
+
+    });
+
+  }
+
+
+
+  // ----- Zone Logic -----
+
+  btnStartZone.addEventListener('click', ()=>{ if(!state.closed){ alert('Close the main shape first.'); return; } setMode('drawingZone'); });
+
+  btnCloseZone.addEventListener('click', ()=>{ if(state.zoneDraft.length>=3){ draw(); } });
+
+  btnSaveZone.addEventListener('click', ()=>{
+
+    if(state.zoneDraft.length<3){ alert('Add at least 3 points.'); return; }
+
+    const id = 'z'+Math.random().toString(36).slice(2,8);
+
+    state.zones.push({id, type:zoneType.value, points:[...state.zoneDraft]});
+
+    state.zoneDraft = []; setMode('closed'); draw();
+
+  });
+
+
+
+
+
+  // ----- New Map Controls Logic -----
+
+  addressSearch.addEventListener('click', async () => {
+
+      const query = addressInput.value;
+
+      if (!query) return;
+
+      const latLngMatch = query.match(/^(-?\d+\.?\d*)[,\s]+(-?\d+\.?\d*)$/);
+
+      if (latLngMatch) { map.setView([parseFloat(latLngMatch[1]), parseFloat(latLngMatch[2])], 19); return; }
+
+      
+
+      const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`);
+
+      const results = await response.json();
+
+      if (results && results.length > 0) {
+
+          map.setView([results[0].lat, results[0].lon], 19);
+
+      } else {
+
+          alert('Address not found.');
+
+      }
+
+  });
+
+
+
+  addressInput.addEventListener('keydown', (e) => {
+
+    if (e.key === 'Enter') {
+
+      e.preventDefault();
+
+      addressSearch.click();
+
+    }
+
+  });
+
+
+
+  toggleMapBtn.addEventListener('click', () => {
+
+      state.mapVisible = !state.mapVisible;
+
+      satelliteLayer.setOpacity(state.mapVisible ? 1 : 0);
+
+      toggleMapBtn.textContent = state.mapVisible ? 'Hide Map' : 'Show Map';
+
+      toggleMapBtn.classList.toggle('active', state.mapVisible);
+
+  });
+
+
+
+  freezeMapBtn.addEventListener('click', () => {
+
+      state.mapFrozen = !state.mapFrozen;
+
+      if (state.mapFrozen) {
+
+          map.dragging.disable(); map.touchZoom.disable(); map.doubleClickZoom.disable();
+
+      } else {
+
+          map.dragging.enable(); map.touchZoom.enable(); map.doubleClickZoom.enable();
+
+      }
+
+      freezeMapBtn.textContent = state.mapFrozen ? 'Unfreeze Map' : 'Freeze Map';
+
+      freezeMapBtn.classList.toggle('active', state.mapFrozen);
+
+  });
+
+
+
+    function updateMetrics(){
+
+
+
+      let area = state.closed ? polygonArea(state.points) : 0;
+
+
+
+      let perim = state.closed ? perimeter(state.points) : 0;
+
+
+
+  
+
+
+
+      // Apply correction factor
+
+
+
+      perim *= state.correctionFactor;
+
+
+
+      area *= (state.correctionFactor * state.correctionFactor);
+
+
+
+  
+
+
+
+      const displayArea = state.unit === 'ft' ? area * 10.7639 : area;
+
+
+
+      const displayPerim = state.unit === 'ft' ? perim * 3.28084 : perim;
+
+
+
+      areaOut.textContent  = fmt(displayArea,1) + ' ' + unitSq(state.unit);
+
+
+
+      perimOut.textContent = fmt(displayPerim,1) + ' ' + state.unit;
+
+
+
+    }
+
+
+
+  draw(); // Initial draw
+
+</script>
