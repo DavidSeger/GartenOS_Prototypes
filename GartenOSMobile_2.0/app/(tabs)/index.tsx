@@ -16,9 +16,12 @@ import {
   TranscriptSegment,
 } from '../../services/geminiService.ts';
 import {
-  suggestAnnotationsWithChatGPT,
+  suggestGardenPlanWithChatGPT,
+  editGardenPlanWithChatGPT,
   HeadingSample,
   GardenAnnotation,
+  GardenZone,
+  PlannerSuggestion,
 } from '../../services/objectPlannerService.ts';
 import { averageCorner, Corner, toMetersProjector, useMetrics } from '../utils/geo.ts';
 
@@ -29,19 +32,20 @@ import MeasurementScreen from '../../components/MeasurementScreen.tsx';
 import CertScreen from '../../components/CertScreen.tsx';
 import SubmittedScreen from '../../components/SubmittedScreen.tsx';
 import { CornerExportData, useCornerExportData } from '../../components/CornersMap.tsx';
-import { getAnnotationIcon } from '../../components/MapIcons.tsx';
-import Svg, { G, Polygon, Polyline, Circle, Text as SvgText } from 'react-native-svg';
 
 const StyledSafeAreaView = styled(SafeAreaView);
 const StyledView = styled(View);
 const DEFAULT_TRANSCRIPT_MESSAGE =
     'The auto-generated transcript will appear here after recording.';
+const EDIT_AUDIO_MIME_TYPE = 'audio/m4a';
 type CameraViewInstance = React.ComponentRef<typeof CameraView>;
 type TrackPoint = { latitude: number; longitude: number; timestamp: number };
 
 export default function App() {
   const [activeScreen, setActiveScreen] = useState<Screen>(Screen.Home);
   const [videoUri, setVideoUri] = useState<string | null>(null);
+  const [walkthroughAudioUri, setWalkthroughAudioUri] = useState<string | null>(null);
+  const [transcriptionMediaUri, setTranscriptionMediaUri] = useState<string | null>(null);
   const [transcript, setTranscript] = useState<string>(DEFAULT_TRANSCRIPT_MESSAGE);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [isCameraReady, setIsCameraReady] = useState<boolean>(false);
@@ -56,42 +60,31 @@ export default function App() {
   const [corners, setCorners] = useState<Corner[]>([]);
   const [isAveragingCorner, setIsAveragingCorner] = useState<boolean>(false);
   const [isExporting, setIsExporting] = useState<boolean>(false);
-  const [svgSize, setSvgSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
   const [transcriptionStatus, setTranscriptionStatus] = useState<TranscriptionStatus | null>(null);
   const [rawTranscriptSegments, setRawTranscriptSegments] = useState<TranscriptSegment[]>([]);
   const [transcriptSegments, setTranscriptSegments] = useState<TranscriptSegment[]>([]);
   const [headings, setHeadings] = useState<HeadingSample[]>([]);
-
-  type XY = { x: number; y: number };
-  type Annotation = {
-    id: string;
-    type: 'tree' | 'water' | string;
-    x: number;
-    y: number;
-    size?: 'small' | 'medium' | 'large';
-  };
-  type Zone = { id: string; type?: string; points: XY[] };
-
-  type CornerDrawing = {
-    points: XY[];
-    closed?: boolean;
-    annotations?: Annotation[];
-    zones?: Zone[];
-    scale?: number;
-    unit?: string;
-  };
-
-  const [cornerDrawing, setCornerDrawing] = useState<CornerDrawing | null>(null);
+  const [isRecordingAnnotationEdit, setIsRecordingAnnotationEdit] = useState(false);
+  const [annotationEditStatus, setAnnotationEditStatus] = useState<string | null>(null);
 
   const cameraRef = useRef<CameraViewInstance | null>(null);
   const recordingPromiseRef = useRef<Promise<{ uri: string } | undefined> | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const locationWatchRef = useRef<Location.LocationSubscription | null>(null);
   const recordingStartRef = useRef<number | null>(null);
+  const layoutSignatureRef = useRef<string | null>(null);
+  const aiPlanSignatureRef = useRef<string | null>(null);
+  const editRecordingRef = useRef<Audio.Recording | null>(null);
+  const walkthroughAudioRecordingRef = useRef<Audio.Recording | null>(null);
 
   const metrics = useMetrics(corners);
   const exportData = useCornerExportData(corners, metrics);
   const walkDistanceMeters = React.useMemo(() => computeTrackDistance(track), [track]);
+  const [aiAnnotations, setAiAnnotations] = useState<GardenAnnotation[]>([]);
+  const [aiZones, setAiZones] = useState<GardenZone[]>([]);
+  const [aiSurface, setAiSurface] = useState<string | null>(null);
+  const [aiPlanStatus, setAiPlanStatus] = useState<'idle' | 'planning' | 'ready' | 'error'>('idle');
+  const [aiPlanError, setAiPlanError] = useState<string | null>(null);
   const canClosePolygon = Boolean(metrics && corners.length >= 3 && !metrics.closed);
 
   useEffect(() => {
@@ -119,6 +112,15 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    return () => {
+      if (editRecordingRef.current) {
+        editRecordingRef.current.stopAndUnloadAsync().catch(() => undefined);
+        editRecordingRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (!transcript || transcript === DEFAULT_TRANSCRIPT_MESSAGE) {
       setTranscriptSegments([]);
       return;
@@ -126,6 +128,54 @@ export default function App() {
     const normalized = normalizeTranscriptSegments(rawTranscriptSegments, transcript, recordingSeconds);
     setTranscriptSegments(normalized);
   }, [rawTranscriptSegments, transcript, recordingSeconds]);
+
+  useEffect(() => {
+    if (!exportData) {
+      layoutSignatureRef.current = null;
+      aiPlanSignatureRef.current = null;
+      setAiAnnotations([]);
+      setAiZones([]);
+      setAiSurface(null);
+      setAiPlanStatus('idle');
+      setAiPlanError(null);
+      if (editRecordingRef.current) {
+        editRecordingRef.current.stopAndUnloadAsync().catch(() => undefined);
+        editRecordingRef.current = null;
+      }
+      setIsRecordingAnnotationEdit(false);
+      setAnnotationEditStatus(null);
+      return;
+    }
+    const layoutSig = buildLayoutSignature(exportData);
+      if (layoutSignatureRef.current !== layoutSig) {
+        layoutSignatureRef.current = layoutSig;
+        aiPlanSignatureRef.current = null;
+        setAiAnnotations([]);
+        setAiZones([]);
+        setAiSurface(null);
+        setAiPlanStatus('idle');
+        setAiPlanError(null);
+      if (editRecordingRef.current) {
+        editRecordingRef.current.stopAndUnloadAsync().catch(() => undefined);
+        editRecordingRef.current = null;
+      }
+      setIsRecordingAnnotationEdit(false);
+      setAnnotationEditStatus(null);
+    }
+  }, [exportData]);
+
+  useEffect(() => {
+    if (!transcriptSegments.length) {
+      aiPlanSignatureRef.current = null;
+      setAiAnnotations([]);
+      setAiZones([]);
+      setAiSurface(null);
+      if (!isProcessing) {
+        setAiPlanStatus('idle');
+        setAiPlanError(null);
+      }
+    }
+  }, [transcriptSegments.length, isProcessing]);
 
   useEffect(() => {
     const startTs = recordingStartRef.current;
@@ -139,22 +189,53 @@ export default function App() {
     setHeadings(computed);
   }, [track, isRecording, recordingSeconds]);
 
-  function zoneFillColor(type?: string) {
-    const t = (type || '').toLowerCase();
-    if (t === 'soil') return '#8B5A2B';
-    if (t === 'grass') return '#2E8B57';
-    if (t === 'concrete') return '#9E9E9E';
-    if (t === 'water') return '#3b82f6';
-    return '#888888';
-  }
-  function zoneStrokeColor(type?: string) {
-    const t = (type || '').toLowerCase();
-    if (t === 'soil') return '#5E3B1C';
-    if (t === 'grass') return '#1F5E3B';
-    if (t === 'concrete') return '#707070';
-    if (t === 'water') return '#1d4ed8';
-    return '#666666';
-  }
+  useEffect(() => {
+    if (
+        activeScreen !== Screen.Preview ||
+        !exportData ||
+        !transcriptSegments.length ||
+        isProcessing
+    ) {
+      return;
+    }
+    const signature = buildAiPlanSignature(exportData, transcriptSegments, headings);
+    if (aiPlanSignatureRef.current === signature) {
+      return;
+    }
+    let isCancelled = false;
+    setAiPlanStatus('planning');
+    setAiPlanError(null);
+    planAiAnnotations({
+      layout: exportData,
+      transcriptSegments,
+      headings,
+      corners,
+      surface: aiSurface,
+    })
+        .then((planResult) => {
+          if (isCancelled) {
+            return;
+          }
+          setAiAnnotations(planResult.annotations);
+          setAiZones(planResult.zones);
+          setAiSurface(planResult.surface ?? null);
+          aiPlanSignatureRef.current = signature;
+          setAiPlanStatus('ready');
+        })
+        .catch((error) => {
+          if (isCancelled) {
+            return;
+          }
+          const message =
+              error instanceof Error ? error.message : 'Unable to interpret the walkthrough.';
+          setAiPlanError(message);
+          setAiPlanStatus('error');
+        });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [activeScreen, aiSurface, corners, exportData, headings, isProcessing, transcriptSegments]);
 
   const startTimer = useCallback(() => {
     if (timerRef.current) {
@@ -300,14 +381,89 @@ export default function App() {
     }
   }, []);
 
+  const stopWalkthroughAudioRecording = useCallback(async (): Promise<string | null> => {
+    const recording = walkthroughAudioRecordingRef.current;
+    if (!recording) {
+      return null;
+    }
+    walkthroughAudioRecordingRef.current = null;
+    try {
+      await recording.stopAndUnloadAsync();
+      return recording.getURI() ?? null;
+    } catch (error) {
+      console.warn('Unable to finalize walkthrough audio recording', error);
+      return null;
+    }
+  }, []);
+
+  const clearWalkthroughAudio = useCallback(async () => {
+    const pending = await stopWalkthroughAudioRecording();
+    const uriToDelete = pending ?? walkthroughAudioUri;
+    if (uriToDelete) {
+      await deleteFileIfExists(uriToDelete);
+    }
+    setWalkthroughAudioUri(null);
+    setTranscriptionMediaUri(null);
+  }, [deleteFileIfExists, stopWalkthroughAudioRecording, walkthroughAudioUri]);
+
+  const startWalkthroughAudioRecording = useCallback(async () => {
+    if (Platform.OS === 'web') {
+      walkthroughAudioRecordingRef.current = null;
+      return;
+    }
+    try {
+      const permission = await Audio.requestPermissionsAsync?.();
+      if (permission && !permission.granted) {
+        console.warn('Microphone permission denied for standalone audio capture.');
+        return;
+      }
+      const recording = new Audio.Recording();
+      await recording.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      await recording.startAsync();
+      walkthroughAudioRecordingRef.current = recording;
+    } catch (error) {
+      console.warn('Unable to start walkthrough audio capture', error);
+      walkthroughAudioRecordingRef.current = null;
+    }
+  }, []);
+
+  const toggleWalkthroughAudioPause = useCallback(
+      async (pause: boolean) => {
+        const recording = walkthroughAudioRecordingRef.current;
+        if (!recording) {
+          return;
+        }
+        try {
+          if (pause) {
+            await recording.pauseAsync();
+          } else {
+            await recording.startAsync();
+          }
+        } catch (error) {
+          console.warn('Unable to toggle walkthrough audio recording state', error);
+        }
+      },
+      [],
+  );
+
   const handleRecordingComplete = useCallback(
       async (uri: string | null) => {
         stopTimer();
         recordingPromiseRef.current = null;
         setIsRecording(false);
         setIsPaused(false);
-        await configureAudioMode(false);
         stopLocationTracking();
+
+        let audioUri: string | null = null;
+        try {
+          audioUri = await stopWalkthroughAudioRecording();
+        } finally {
+          await configureAudioMode(false);
+        }
+
+        const transcriptionUri = audioUri ?? uri ?? null;
+        setWalkthroughAudioUri(audioUri ?? null);
+        setTranscriptionMediaUri(transcriptionUri);
 
         if (!uri) {
           Alert.alert('Recording unavailable', 'No video was captured. Please try again.');
@@ -318,7 +474,7 @@ export default function App() {
         setVideoUri(uri);
         setActiveScreen(Screen.Preview);
       },
-      [configureAudioMode, stopLocationTracking, stopTimer],
+      [configureAudioMode, stopLocationTracking, stopTimer, stopWalkthroughAudioRecording],
   );
 
   const startRecording = useCallback(async () => {
@@ -336,6 +492,7 @@ export default function App() {
       return;
     }
 
+    await clearWalkthroughAudio();
     updatePauseSupport();
     setIsPaused(false);
     setTranscript(DEFAULT_TRANSCRIPT_MESSAGE);
@@ -354,6 +511,7 @@ export default function App() {
     setIsRecording(true);
 
     await configureAudioMode(true);
+    await startWalkthroughAudioRecording();
     recordingStartRef.current = Date.now();
 
     try {
@@ -372,6 +530,12 @@ export default function App() {
       stopTimer();
       recordingPromiseRef.current = null;
       setIsRecording(false);
+      const orphanAudio = await stopWalkthroughAudioRecording();
+      if (orphanAudio) {
+        await deleteFileIfExists(orphanAudio);
+      }
+      setWalkthroughAudioUri(null);
+      setTranscriptionMediaUri(null);
       await configureAudioMode(false);
       stopLocationTracking();
       Alert.alert(
@@ -383,29 +547,41 @@ export default function App() {
       setActiveScreen(Screen.Home);
     }
   }, [
+    clearWalkthroughAudio,
     configureAudioMode,
+    deleteFileIfExists,
     handleRecordingComplete,
     isCameraReady,
     startLocationTracking,
     startTimer,
+    startWalkthroughAudioRecording,
     stopLocationTracking,
     stopTimer,
+    stopWalkthroughAudioRecording,
     updatePauseSupport,
   ]);
 
   useEffect(() => {
-    if (shouldAutoRestart) {
+    if (!shouldAutoRestart) {
+      return;
+    }
+    (async () => {
       setShouldAutoRestart(false);
+      await deleteFileIfExists(videoUri);
+      await clearWalkthroughAudio();
       setVideoUri(null);
       setTranscript(DEFAULT_TRANSCRIPT_MESSAGE);
       setRawTranscriptSegments([]);
       setTranscriptSegments([]);
       setHeadings([]);
       setIsPaused(false);
+      setAiAnnotations([]);
+      setAiZones([]);
+      setAiSurface(null);
       recordingStartRef.current = null;
-      startRecording();
-    }
-  }, [shouldAutoRestart, startRecording]);
+      await startRecording();
+    })();
+  }, [shouldAutoRestart, startRecording, deleteFileIfExists, videoUri, clearWalkthroughAudio]);
 
   const stopRecording = useCallback(() => {
     if (cameraRef.current && recordingPromiseRef.current) {
@@ -422,24 +598,24 @@ export default function App() {
     }
     try {
       await cameraRef.current.toggleRecordingAsync?.();
-      setIsPaused((prev) => {
-        const next = !prev;
-        if (next) {
-          stopTimer();
-        } else {
-          startTimer();
-        }
-        return next;
-      });
+      const nextPaused = !isPaused;
+      setIsPaused(nextPaused);
+      if (nextPaused) {
+        stopTimer();
+      } else {
+        startTimer();
+      }
+      await toggleWalkthroughAudioPause(nextPaused);
     } catch (error) {
       console.warn('Unable to pause or resume recording:', error);
     }
-  }, [isPauseSupported, startTimer, stopTimer]);
+  }, [isPauseSupported, isPaused, startTimer, stopTimer, toggleWalkthroughAudioPause]);
 
   const resetApp = useCallback(async () => {
     setIsPaused(false);
     await configureAudioMode(false);
     await deleteFileIfExists(videoUri);
+    await clearWalkthroughAudio();
     setVideoUri(null);
     setTranscript(DEFAULT_TRANSCRIPT_MESSAGE);
     setRawTranscriptSegments([]);
@@ -452,9 +628,22 @@ export default function App() {
     setTrack([]);
     setCorners([]);
     setIsAveragingCorner(false);
+    if (editRecordingRef.current) {
+      editRecordingRef.current.stopAndUnloadAsync().catch(() => undefined);
+      editRecordingRef.current = null;
+    }
+    setIsRecordingAnnotationEdit(false);
+    setAnnotationEditStatus(null);
+    setAiAnnotations([]);
+    setAiZones([]);
+    setAiSurface(null);
+    setAiPlanStatus('idle');
+    setAiPlanError(null);
+    layoutSignatureRef.current = null;
+    aiPlanSignatureRef.current = null;
     setActiveScreen(Screen.Home);
     recordingStartRef.current = null;
-  }, [configureAudioMode, deleteFileIfExists, stopLocationTracking, stopTimer, videoUri]);
+  }, [clearWalkthroughAudio, configureAudioMode, deleteFileIfExists, stopLocationTracking, stopTimer, videoUri]);
 
   const handleExportGarden = useCallback(
       async (exportData: CornerExportData | null) => {
@@ -465,22 +654,38 @@ export default function App() {
 
         try {
           setIsExporting(true);
-          setCornerDrawing(exportData as unknown as CornerDrawing);
           const transcriptForExport = buildTimestampedTranscript(transcriptSegments, transcript);
-          const aiAnnotations = await planAiAnnotations({
-            layout: exportData,
-            corners,
-            transcriptSegments,
-            headings,
-            existingAnnotations: cornerDrawing?.annotations,
-          });
+          let annotationsForExport = aiAnnotations;
+          let zonesForExport = aiZones;
+          let surfaceForExport = aiSurface;
+          if (!annotationsForExport?.length && !zonesForExport?.length) {
+            const planResult = await planAiAnnotations({
+              layout: exportData,
+              corners,
+              transcriptSegments,
+              headings,
+              surface: surfaceForExport,
+            });
+            annotationsForExport = planResult.annotations;
+            zonesForExport = planResult.zones;
+            surfaceForExport = planResult.surface ?? null;
+            setAiAnnotations(annotationsForExport);
+            setAiZones(zonesForExport);
+            setAiSurface(surfaceForExport);
+            const signature = buildAiPlanSignature(exportData, transcriptSegments, headings);
+            aiPlanSignatureRef.current = signature;
+            setAiPlanStatus('ready');
+            setAiPlanError(null);
+          }
           const payload = {
             version: 1,
             exportedAt: Date.now(),
             transcript: transcriptForExport,
             transcriptSegments,
             headings,
-            annotations: aiAnnotations,
+            annotations: annotationsForExport ?? [],
+            zones: zonesForExport ?? [],
+            surface: surfaceForExport ?? undefined,
             videoUri,
             gpsTrack: track,
             corners,
@@ -519,7 +724,7 @@ export default function App() {
           setIsExporting(false);
         }
       },
-      [corners, headings, metrics, transcript, transcriptSegments, track, videoUri],
+      [aiAnnotations, aiSurface, aiZones, corners, headings, metrics, transcript, transcriptSegments, track, videoUri],
   );
 
   const processTranscription = useCallback(
@@ -584,26 +789,40 @@ export default function App() {
   useEffect(() => {
     if (
         activeScreen === Screen.Preview &&
-        videoUri &&
+        transcriptionMediaUri &&
         !isProcessing &&
         transcript.startsWith('The auto-generated')
     ) {
-      processTranscription(videoUri);
+      processTranscription(transcriptionMediaUri);
     }
-  }, [activeScreen, videoUri, isProcessing, transcript, processTranscription]);
+  }, [activeScreen, transcriptionMediaUri, isProcessing, transcript, processTranscription]);
 
   const retakeRecording = useCallback(async () => {
     await deleteFileIfExists(videoUri);
+    await clearWalkthroughAudio();
     setIsPaused(false);
     setVideoUri(null);
     setTranscript(DEFAULT_TRANSCRIPT_MESSAGE);
     setRawTranscriptSegments([]);
     setTranscriptSegments([]);
     setHeadings([]);
+    if (editRecordingRef.current) {
+      editRecordingRef.current.stopAndUnloadAsync().catch(() => undefined);
+      editRecordingRef.current = null;
+    }
+    setIsRecordingAnnotationEdit(false);
+    setAnnotationEditStatus(null);
+    setAiAnnotations([]);
+    setAiZones([]);
+    setAiSurface(null);
+    setAiPlanStatus('idle');
+    setAiPlanError(null);
+    layoutSignatureRef.current = null;
+    aiPlanSignatureRef.current = null;
     recordingStartRef.current = null;
     setActiveScreen(Screen.Recording);
     setShouldAutoRestart(true);
-  }, [deleteFileIfExists, videoUri]);
+  }, [clearWalkthroughAudio, deleteFileIfExists, videoUri]);
 
   const downloadRecording = useCallback(async () => {
     if (!videoUri || Platform.OS !== 'web') {
@@ -622,36 +841,135 @@ export default function App() {
     URL.revokeObjectURL(objectUrl);
   }, [videoUri]);
 
+  const applyAnnotationEditFromAudio = useCallback(
+      async (audioUri: string) => {
+        if (!exportData) {
+          setAnnotationEditStatus('Add at least two corners before editing placements.');
+          await deleteFileIfExists(audioUri);
+          return;
+        }
+        try {
+          setAnnotationEditStatus('Transcribing edit instructions...');
+          const transcriptResult = await transcribeMediaViaFileApiTimestamped({
+            fileUri: audioUri,
+            mimeType: EDIT_AUDIO_MIME_TYPE,
+            targetSegmentSeconds: 3,
+          });
+          const editTranscript = transcriptResult.fullText?.trim();
+          if (!editTranscript) {
+            setAnnotationEditStatus('Could not understand the edit request. Please try again.');
+            return;
+          }
+          setAnnotationEditStatus('Updating map with ChatGPT...');
+          setAiPlanStatus('planning');
+          const updatedPlan = await editAiAnnotations({
+            layout: exportData,
+            corners,
+            transcriptSegments,
+            headings,
+            existingAnnotations: aiAnnotations,
+            existingZones: aiZones,
+            surface: aiSurface,
+            editTranscript,
+          });
+          setAiAnnotations(updatedPlan.annotations);
+          setAiZones(updatedPlan.zones);
+          setAiSurface(updatedPlan.surface ?? null);
+          aiPlanSignatureRef.current = buildAiPlanSignature(exportData, transcriptSegments, headings);
+          setAiPlanStatus('ready');
+          setAiPlanError(null);
+          setAnnotationEditStatus('Edits applied.');
+        } catch (error) {
+          const message =
+              error instanceof Error ? error.message : 'Failed to apply edit instructions.';
+          console.error('Annotation edit failed', error);
+          setAnnotationEditStatus(message);
+          setAiPlanStatus('error');
+          setAiPlanError(message);
+          Alert.alert('Annotation edit failed', message);
+        } finally {
+          await deleteFileIfExists(audioUri);
+        }
+      },
+      [aiAnnotations, aiSurface, aiZones, corners, deleteFileIfExists, exportData, headings, transcriptSegments],
+  );
+
+  const startAnnotationEditRecording = useCallback(async () => {
+    if (isRecordingAnnotationEdit) {
+      return;
+    }
+    if (!exportData) {
+      Alert.alert('Map not ready', 'Add at least two corners before editing object placements.');
+      return;
+    }
+    if (isProcessing) {
+      Alert.alert('Please wait', 'Finish transcription before editing placements.');
+      return;
+    }
+    try {
+      const permission = await Audio.requestPermissionsAsync?.();
+      if (permission && !permission.granted) {
+        Alert.alert('Microphone denied', 'Enable microphone access to record edit instructions.');
+        return;
+      }
+      setAnnotationEditStatus('Recording edit instructions... Tap again to finish.');
+      await configureAudioMode(true);
+      const recording = new Audio.Recording();
+      await recording.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      await recording.startAsync();
+      editRecordingRef.current = recording;
+      setIsRecordingAnnotationEdit(true);
+      Alert.alert(
+          'Recording edits',
+          'Describe what should change, then tap "Edit object placements" again to finish.',
+      );
+    } catch (error) {
+      console.warn('Unable to start annotation edit recording', error);
+      setAnnotationEditStatus('Unable to start recording edit instructions.');
+      await configureAudioMode(false);
+    }
+  }, [configureAudioMode, exportData, isProcessing, isRecordingAnnotationEdit]);
+
+  const finishAnnotationEditRecording = useCallback(async () => {
+    const recording = editRecordingRef.current;
+    if (!recording) {
+      setIsRecordingAnnotationEdit(false);
+      return;
+    }
+    try {
+      setAnnotationEditStatus('Processing edit instructions...');
+      await recording.stopAndUnloadAsync();
+      const uri = recording.getURI();
+      editRecordingRef.current = null;
+      setIsRecordingAnnotationEdit(false);
+      await configureAudioMode(false);
+      if (!uri) {
+        setAnnotationEditStatus('No audio captured. Please try again.');
+        return;
+      }
+      await applyAnnotationEditFromAudio(uri);
+    } catch (error) {
+      console.error('Unable to finish annotation edit recording', error);
+      setAnnotationEditStatus('Unable to process the edit recording.');
+      editRecordingRef.current = null;
+      setIsRecordingAnnotationEdit(false);
+      await configureAudioMode(false);
+    }
+  }, [applyAnnotationEditFromAudio, configureAudioMode]);
+
+  const handleAnnotationEditRequest = useCallback(async () => {
+    if (isRecordingAnnotationEdit) {
+      await finishAnnotationEditRecording();
+    } else {
+      await startAnnotationEditRecording();
+    }
+  }, [finishAnnotationEditRecording, isRecordingAnnotationEdit, startAnnotationEditRecording]);
+
   if (hasPermission === null) {
     return <View />;
   }
   if (hasPermission === false) {
     return <Text>No access to camera</Text>;
-  }
-
-  function fitToView(
-      pts: XY[],
-      width: number,
-      height: number,
-      padding = 12
-  ) {
-    if (!pts.length) return { toFit: (p: XY) => p, fittedPts: pts };
-    let minX = pts[0].x, minY = pts[0].y, maxX = pts[0].x, maxY = pts[0].y;
-    for (const p of pts) {
-      if (p.x < minX) minX = p.x;
-      if (p.y < minY) minY = p.y;
-      if (p.x > maxX) maxX = p.x;
-      if (p.y > maxY) maxY = p.y;
-    }
-    const w = Math.max(1, maxX - minX);
-    const h = Math.max(1, maxY - minY);
-    const sx = (width - 2 * padding) / w;
-    const sy = (height - 2 * padding) / h;
-    const s = Math.min(sx, sy);
-    const tx = -minX * s + padding;
-    const ty = -minY * s + padding;
-    const toFit = (p: XY) => ({ x: p.x * s + tx, y: p.y * s + ty });
-    return { toFit, fittedPts: pts.map(toFit) };
   }
 
   const renderScreen = () => {
@@ -683,15 +1001,22 @@ export default function App() {
                 onNavigate={setActiveScreen}
                 onRetake={retakeRecording}
                 onDownload={Platform.OS === 'web' ? downloadRecording : undefined}
-                track={track}
                 corners={corners}
                 metrics={metrics}
                 canClosePolygon={canClosePolygon}
                 onClosePolygon={closePolygon}
                 isExporting={isExporting}
                 onExport={handleExportGarden}
+                exportData={exportData}
                 durationSeconds={recordingSeconds}
                 walkDistanceMeters={walkDistanceMeters}
+                annotations={aiAnnotations}
+                zones={aiZones}
+                aiPlanStatus={aiPlanStatus}
+                aiPlanError={aiPlanError}
+                onAnnotationEdit={handleAnnotationEditRequest}
+                isAnnotationEditRecording={isRecordingAnnotationEdit}
+                annotationEditStatus={annotationEditStatus}
                 onRetranscribe={() => {
                   if (videoUri && !isProcessing) {
                     processTranscription(videoUri);
@@ -705,7 +1030,7 @@ export default function App() {
                 onNavigate={setActiveScreen}
                 layout={exportData}
                 metrics={metrics}
-                annotations={[]}
+                annotations={aiAnnotations}
             />
         );
       case Screen.Certification:
@@ -762,103 +1087,49 @@ export default function App() {
                   activeScreen === Screen.Recording && { flex: 1 },
                 ]}
             >
-              {activeScreen === Screen.Preview && cornerDrawing?.points?.length ? (
-                  <View
-                      pointerEvents="none"
-                      style={StyleSheet.absoluteFill}
-                      onLayout={e => {
-                        const { width, height } = e.nativeEvent.layout;
-                        setSvgSize({ width, height });
-                      }}
-                  >
-                    {svgSize.width > 0 && svgSize.height > 0 && (
-                        <Svg width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
-                          {(() => {
-                            const W = svgSize.width;
-                            const H = svgSize.height;
-                            const { toFit, fittedPts } = fitToView(cornerDrawing.points, W, H, 24);
-
-                            // zones first
-                            {(cornerDrawing.zones ?? []).map(z => {
-                              if (!z.points?.length) return null;
-                              const zPts = z.points.map(toFit);
-                              return (
-                                  <Polygon
-                                      key={`zone-${z.id}`}
-                                      points={zPts.map(p => `${p.x},${p.y}`).join(' ')}
-                                      stroke={zoneStrokeColor(z.type)}
-                                      fill={zoneFillColor(z.type)}
-                                      strokeWidth={1}
-                                      strokeOpacity={0.85}
-                                      fillOpacity={0.28}
-                                  />
-                              );
-                            })}
-
-                            if (cornerDrawing.closed) {
-                              return (
-                                  <>
-                                    <Polygon
-                                        points={fittedPts.map(p => `${p.x},${p.y}`).join(' ')}
-                                        strokeWidth={2}
-                                        strokeOpacity={0.9}
-                                        fillOpacity={0.12}
-                                    />
-                                    {fittedPts.map((p, i) => (
-                                        <G key={`corner-${i}`}>
-                                          <Circle cx={p.x} cy={p.y} r={3} />
-                                        </G>
-                                    ))}
-                                    {(cornerDrawing.annotations ?? []).map(a => {
-                                      const p = toFit({ x: a.x, y: a.y });
-                                      const iconSize =
-                                          a.size === 'small' ? 12 : a.size === 'large' ? 20 : 16;
-                                      return (
-                                          <G key={a.id} x={p.x} y={p.y}>
-                                            {getAnnotationIcon(a.type, iconSize)}
-                                          </G>
-                                      );
-                                    })}
-                                  </>
-                              );
-                            } else {
-                              return (
-                                  <>
-                                    <Polyline
-                                        points={fittedPts.map(p => `${p.x},${p.y}`).join(' ')}
-                                        strokeWidth={2}
-                                        strokeOpacity={0.9}
-                                        fill="none"
-                                    />
-                                    {fittedPts.map((p, i) => (
-                                        <G key={`corner-${i}`}>
-                                          <Circle cx={p.x} cy={p.y} r={3} />
-                                        </G>
-                                    ))}
-                                    {(cornerDrawing.annotations ?? []).map(a => {
-                                      const p = toFit({ x: a.x, y: a.y });
-                                      const iconSize =
-                                          a.size === 'small' ? 12 : a.size === 'large' ? 20 : 16;
-                                      return (
-                                          <G key={a.id} x={p.x} y={p.y}>
-                                            {getAnnotationIcon(a.type, iconSize)}
-                                          </G>
-                                      );
-                                    })}
-                                  </>
-                              );
-                            }
-                          })()}
-                        </Svg>
-                    )}
-                  </View>
-              ) : null}
               {renderScreen()}
             </StyledView>
           </StyledView>
         </StyledView>
       </StyledSafeAreaView>
   );
+}
+
+function buildLayoutSignature(layout: CornerExportData): string {
+  const pointsSig = layout.points
+      .map((pt) => `${Math.round(pt.x * 100)}:${Math.round(pt.y * 100)}`)
+      .join('|');
+  return `${pointsSig}|${layout.closed ? 1 : 0}|${Math.round(layout.scale * 1000)}`;
+}
+
+function buildTranscriptSignature(segments: TranscriptSegment[]): string {
+  if (!segments.length) {
+    return '';
+  }
+  return segments
+      .map((segment) => {
+        const label = segment.text?.slice(0, 48) ?? '';
+        return `${Math.round(segment.start_s * 10)}:${label}`;
+      })
+      .join('|');
+}
+
+function buildHeadingsSignature(headings: HeadingSample[]): string {
+  if (!headings.length) {
+    return '';
+  }
+  return headings
+      .slice(0, 120)
+      .map((sample) => `${sample.second}:${Math.round(sample.heading_deg)}`)
+      .join('|');
+}
+
+function buildAiPlanSignature(
+    layout: CornerExportData,
+    segments: TranscriptSegment[],
+    headings: HeadingSample[],
+): string {
+  return `${buildLayoutSignature(layout)}::${buildTranscriptSignature(segments)}::${buildHeadingsSignature(headings)}`;
 }
 
 function formatTimestampLabel(totalSeconds: number): string {
@@ -959,16 +1230,22 @@ type AiPlanArgs = {
   transcriptSegments: TranscriptSegment[];
   headings: HeadingSample[];
   existingAnnotations?: GardenAnnotation[];
+  existingZones?: GardenZone[];
+  surface?: string | null;
 };
 
-async function planAiAnnotations(args: AiPlanArgs): Promise<GardenAnnotation[]> {
-  const { layout, transcriptSegments, headings, corners, existingAnnotations } = args;
+async function planAiAnnotations(args: AiPlanArgs): Promise<PlannerSuggestion> {
+  const { layout, transcriptSegments, headings, corners, existingAnnotations, existingZones, surface } = args;
   if (!layout?.points?.length || !transcriptSegments.length) {
-    return existingAnnotations ?? [];
+    return {
+      annotations: existingAnnotations ?? [],
+      zones: existingZones ?? [],
+      surface: surface ?? null,
+    };
   }
 
   try {
-    const aiObjects = await suggestAnnotationsWithChatGPT({
+    const plannerSuggestion = await suggestGardenPlanWithChatGPT({
       layout: {
         points: layout.points,
         closed: layout.closed,
@@ -982,12 +1259,87 @@ async function planAiAnnotations(args: AiPlanArgs): Promise<GardenAnnotation[]> 
       transcriptSegments,
       headings,
       existingAnnotations,
+      existingZones,
+      surface,
     });
-    const normalized = normalizeAnnotationsForLayout(aiObjects, layout);
-    return [...(existingAnnotations ?? []), ...normalized];
+    return {
+      annotations: normalizeAnnotationsForLayout(plannerSuggestion.annotations, layout),
+      zones: normalizeZonesForLayout(plannerSuggestion.zones, layout),
+      surface: plannerSuggestion.surface ?? surface ?? null,
+    };
   } catch (error) {
     console.warn('AI object placement failed', error);
-    return existingAnnotations ?? [];
+    return {
+      annotations: existingAnnotations ?? [],
+      zones: existingZones ?? [],
+      surface: surface ?? null,
+    };
+  }
+}
+
+type AiEditArgs = AiPlanArgs & {
+  editTranscript: string;
+};
+
+async function editAiAnnotations(args: AiEditArgs): Promise<PlannerSuggestion> {
+  const {
+    layout,
+    corners,
+    transcriptSegments,
+    headings,
+    existingAnnotations,
+    existingZones,
+    surface,
+    editTranscript,
+  } = args;
+  if (!layout?.points?.length) {
+    return {
+      annotations: existingAnnotations ?? [],
+      zones: existingZones ?? [],
+      surface: surface ?? null,
+    };
+  }
+  if (!editTranscript?.trim()) {
+    return {
+      annotations: existingAnnotations ?? [],
+      zones: existingZones ?? [],
+      surface: surface ?? null,
+    };
+  }
+
+  try {
+    const plannerSuggestion = await editGardenPlanWithChatGPT(
+        {
+          layout: {
+            points: layout.points,
+            closed: layout.closed,
+            scale: layout.scale,
+            extent: layout.extent,
+          },
+          corners: corners.map((corner) => ({
+            latitude: corner.latitude,
+            longitude: corner.longitude,
+          })),
+          transcriptSegments,
+          headings,
+          existingAnnotations,
+          existingZones,
+          surface,
+        },
+        editTranscript,
+    );
+    return {
+      annotations: normalizeAnnotationsForLayout(plannerSuggestion.annotations, layout),
+      zones: normalizeZonesForLayout(plannerSuggestion.zones, layout),
+      surface: plannerSuggestion.surface ?? surface ?? null,
+    };
+  } catch (error) {
+    console.warn('AI object edit failed', error);
+    return {
+      annotations: existingAnnotations ?? [],
+      zones: existingZones ?? [],
+      surface: surface ?? null,
+    };
   }
 }
 
@@ -1011,7 +1363,7 @@ function normalizeAnnotationsForLayout(
     if (pt.y < minY) minY = pt.y;
     if (pt.y > maxY) maxY = pt.y;
   }
-  return annotations.map((ann) => ({
+  const clamped = annotations.map((ann) => ({
     id: ann.id ?? createAnnotationId(),
     type: ann.type?.trim() || 'unknown',
     label: ann.label?.trim(),
@@ -1019,6 +1371,47 @@ function normalizeAnnotationsForLayout(
     x: clampNumber(ann.x, minX, maxX),
     y: clampNumber(ann.y, minY, maxY),
   }));
+  return enforceMinSpacing(clamped, { minX, maxX, minY, maxY });
+}
+
+function normalizeZonesForLayout(
+    zones: GardenZone[] | undefined,
+    layout: CornerExportData,
+): GardenZone[] {
+  if (!zones?.length) {
+    return [];
+  }
+  if (!layout.points?.length) {
+    return [];
+  }
+  let minX = layout.points[0].x;
+  let maxX = layout.points[0].x;
+  let minY = layout.points[0].y;
+  let maxY = layout.points[0].y;
+  for (const pt of layout.points) {
+    if (pt.x < minX) minX = pt.x;
+    if (pt.x > maxX) maxX = pt.x;
+    if (pt.y < minY) minY = pt.y;
+    if (pt.y > maxY) maxY = pt.y;
+  }
+  return zones
+      .map((zone, index) => {
+        const normalizedPoints = (zone.points ?? [])
+            .map((point) => ({
+              x: clampNumber(point.x, minX, maxX),
+              y: clampNumber(point.y, minY, maxY),
+            }))
+            .filter((pt) => Number.isFinite(pt.x) && Number.isFinite(pt.y));
+        if (normalizedPoints.length < 3) {
+          return null;
+        }
+        return {
+          ...zone,
+          id: zone.id ?? `zone_${index}_${createAnnotationId()}`,
+          points: normalizedPoints,
+        };
+      })
+      .filter((zone): zone is GardenZone => Boolean(zone));
 }
 
 function clampNumber(value: number, min: number, max: number) {
@@ -1026,6 +1419,49 @@ function clampNumber(value: number, min: number, max: number) {
     return min;
   }
   return Math.min(Math.max(value, min), max);
+}
+
+function enforceMinSpacing(
+    annotations: GardenAnnotation[],
+    bounds: { minX: number; maxX: number; minY: number; maxY: number },
+): GardenAnnotation[] {
+  if (annotations.length < 2) {
+    return annotations;
+  }
+
+  const spanX = bounds.maxX - bounds.minX;
+  const spanY = bounds.maxY - bounds.minY;
+  // Keep objects visually apart; fall back to a small absolute spacing if the garden is tiny.
+  const minSpacing = Math.max(Math.max(spanX, spanY) * 0.012, 0.5);
+  const minSpacingSq = minSpacing * minSpacing;
+
+  const placed: GardenAnnotation[] = [];
+
+  for (const ann of annotations) {
+    let candidate = { ...ann };
+    let attempts = 0;
+    while (
+        placed.some(
+            (p) => {
+              const dx = candidate.x - p.x;
+              const dy = candidate.y - p.y;
+              return dx * dx + dy * dy < minSpacingSq;
+            },
+        ) &&
+        attempts < 24
+    ) {
+      // Spread in a spiral: try 8 directions, then increase radius.
+      const radius = minSpacing * (1 + Math.floor(attempts / 8));
+      const angle = ((attempts % 8) / 8) * Math.PI * 2;
+      const newX = clampNumber(candidate.x + Math.cos(angle) * radius, bounds.minX, bounds.maxX);
+      const newY = clampNumber(candidate.y + Math.sin(angle) * radius, bounds.minY, bounds.maxY);
+      candidate = { ...candidate, x: newX, y: newY };
+      attempts += 1;
+    }
+    placed.push(candidate);
+  }
+
+  return placed;
 }
 
 function createAnnotationId() {

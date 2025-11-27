@@ -209,18 +209,36 @@ async function requestTranscriptSegments(
   return extractTranscriptSegments(json);
 }
 
-export async function prepareMediaForTranscription(videoUri: string): Promise<PreparedMedia> {
-  const info = await FileSystem.getInfoAsync(videoUri);
+export async function prepareMediaForTranscription(mediaUri: string): Promise<PreparedMedia> {
+  const info = await FileSystem.getInfoAsync(mediaUri);
   if (!info.exists || info.isDirectory || typeof info.size !== "number") {
     throw new Error("Recording file is missing or unreadable.");
   }
 
-  // Future enhancement: export an audio-only track here to shrink uploads.
+  const mimeType = guessMimeTypeFromUri(mediaUri);
+
   return {
-    uri: videoUri,
-    mimeType: Platform.OS === "web" ? "video/mp4" : "video/mp4",
+    uri: mediaUri,
+    mimeType,
     size: info.size,
   };
+}
+
+function guessMimeTypeFromUri(uri: string): string {
+  const lower = uri.toLowerCase();
+  if (lower.endsWith(".m4a") || lower.endsWith(".aac")) {
+    return "audio/mp4";
+  }
+  if (lower.endsWith(".wav")) {
+    return "audio/wav";
+  }
+  if (lower.endsWith(".mp3")) {
+    return "audio/mpeg";
+  }
+  if (lower.endsWith(".caf")) {
+    return "audio/x-caf";
+  }
+  return "video/mp4";
 }
 
 async function startResumableUpload(params: {
@@ -449,7 +467,7 @@ export async function transcribeMediaViaFileApi(params: {
 
 export async function transcribeAudio(
   audioBase64: string,
-  mimeType: "audio/wav" | "video/mp4",
+  mimeType: "audio/wav" | "audio/mp4" | "video/mp4",
 ): Promise<string> {
   if (!API_KEY) {
     console.warn("EXPO_PUBLIC_GEMINI_API_KEY is not set. Using mock response.");
@@ -549,7 +567,7 @@ export async function transcribeMediaViaFileApiTimestamped(params: {
 // Timestamped variant using inline data
 export async function transcribeAudioTimestamped(
   audioBase64: string,
-  mimeType: "audio/wav" | "video/mp4",
+  mimeType: "audio/wav" | "audio/mp4" | "video/mp4",
   opts: { targetSegmentSeconds?: number } = {},
 ): Promise<TranscriptResult> {
   if (!API_KEY) {

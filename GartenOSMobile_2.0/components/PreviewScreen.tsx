@@ -1,18 +1,22 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, LayoutChangeEvent } from 'react-native';
+import Svg, { G, Polygon, Polyline, Circle } from 'react-native-svg';
 import { Video, ResizeMode } from 'expo-av';
 import { styled } from 'nativewind';
 import InfoButton from './InfoButton';
 
 import { Screen } from '../types';
-import { TrackMap, TrackPoint } from './TrackMap';
-import { CornersMap, useCornerExportData, CornerExportData } from './CornersMap';
+import { CornerExportData } from './CornersMap';
 import { Corner, CornerMetrics } from '../app/utils/geo';
 import { TranscriptionStatus, TranscriptSegment } from '../services/geminiService.ts';
+import { GardenAnnotation, GardenZone } from '../services/objectPlannerService.ts';
+import { getAnnotationIcon } from './MapIcons';
 
 const StyledView = styled(View);
 const StyledText = styled(Text);
 const StyledTouchableOpacity = styled(TouchableOpacity);
+
+type AiPlanStatus = 'idle' | 'planning' | 'ready' | 'error';
 
 interface PreviewScreenProps {
   videoUri: string | null;
@@ -23,16 +27,23 @@ interface PreviewScreenProps {
   onNavigate: (screen: Screen) => void;
   onRetake: () => void;
   onDownload?: () => void;
-  track: TrackPoint[];
   corners: Corner[];
   metrics: CornerMetrics | null;
   canClosePolygon: boolean;
   onClosePolygon: () => void;
   isExporting: boolean;
   onExport: (data: CornerExportData | null) => void;
+  exportData: CornerExportData | null;
   durationSeconds: number;
   onRetranscribe: () => void;
   walkDistanceMeters: number;
+  aiPlanStatus: AiPlanStatus;
+  aiPlanError: string | null;
+  annotations: GardenAnnotation[];
+  zones: GardenZone[];
+  onAnnotationEdit: () => void;
+  isAnnotationEditRecording: boolean;
+  annotationEditStatus: string | null;
 }
 
 const PreviewScreen: React.FC<PreviewScreenProps> = ({
@@ -44,19 +55,25 @@ const PreviewScreen: React.FC<PreviewScreenProps> = ({
                                                        onNavigate,
                                                        onRetake,
                                                        onDownload,
-                                                       track,
                                                        corners,
                                                        metrics,
                                                        canClosePolygon,
-                                                       onClosePolygon,
-                                                       isExporting,
-                                                       onExport,
-                                                       durationSeconds,
-                                                       onRetranscribe,
-                                                       walkDistanceMeters,
+  onClosePolygon,
+  isExporting,
+  onExport,
+  exportData,
+  durationSeconds,
+  onRetranscribe,
+  walkDistanceMeters,
+  aiPlanStatus,
+  aiPlanError,
+  annotations,
+  zones,
+  onAnnotationEdit,
+                                                       isAnnotationEditRecording,
+                                                       annotationEditStatus,
                                                      }) => {
   const video = React.useRef<Video | null>(null);
-  const exportData = useCornerExportData(corners, metrics);
   const exportReady = Boolean(exportData && metrics);
   const formatTimecode = React.useCallback((totalSeconds: number) => {
     if (!Number.isFinite(totalSeconds)) return '0:00';
@@ -100,6 +117,23 @@ const PreviewScreen: React.FC<PreviewScreenProps> = ({
         return 'Processing transcription...';
     }
   }, [isProcessing, transcriptionStatus]);
+  const aiStatus = React.useMemo(() => {
+    switch (aiPlanStatus) {
+      case 'planning':
+        return { text: 'Interpreting walkthrough with ChatGPT...', className: 'text-green-800' };
+      case 'ready':
+        return { text: 'AI annotations ready. Map updated automatically.', className: 'text-green-700' };
+      case 'error':
+        return {
+          text: aiPlanError ?? 'Unable to interpret walkthrough. Try retranscribing.',
+          className: 'text-red-500',
+        };
+      default:
+        return null;
+    }
+  }, [aiPlanStatus, aiPlanError]);
+
+  const editButtonDisabled = !isAnnotationEditRecording && (!exportReady || isExporting || isProcessing);
 
   return (
       <ScrollView>
@@ -115,47 +149,22 @@ const PreviewScreen: React.FC<PreviewScreenProps> = ({
                   isLooping
               />
           )}
-          {track.length > 1 && (
-              <StyledView className="bg-green-50/70 border border-green-200 rounded-xl p-3 w-full mt-3">
-                <StyledText className="text-xs text-indigo-900 opacity-80 mb-1 font-semibold">
-                  Walkthrough path
-                </StyledText>
-                <TrackMap track={track} />
-              </StyledView>
-          )}
           <StyledView className="bg-green-50/70 border border-green-200 rounded-xl p-3 w-full mt-3">
             <StyledView className="flex-row justify-between items-center mb-2">
-              <StyledView className="flex-row items-center">
-                <StyledText className="text-xs text-indigo-900 opacity-80 font-semibold">Corner mapper</StyledText>
-                <InfoButton
-                  label="Corner mapper"
-                  message="Shows the corners you captured and any AI-suggested objects before exporting the map."
-                  size={18}
-                  color="#1f2937"
-                />
-              </StyledView>
+              <StyledText className="text-xs text-indigo-900 opacity-80 font-semibold">Corner mapper</StyledText>
               {canClosePolygon && (
                   <StyledTouchableOpacity
                       onPress={onClosePolygon}
                       className="bg-blue-100 border border-blue-200 px-3 py-1 rounded-lg"
                       activeOpacity={0.7}
                   >
-                    <StyledView className="flex-row items-center">
-                      <StyledText className="text-blue-700 text-xs font-semibold">Close polygon</StyledText>
-                      <InfoButton
-                        label="Close polygon"
-                        message="Connects your last captured corner back to the first one so the area is sealed."
-                        size={16}
-                        color="#1d4ed8"
-                        style={{ marginLeft: 4 }}
-                      />
-                    </StyledView>
+                    <StyledText className="text-blue-700 text-xs font-semibold">Close polygon</StyledText>
                   </StyledTouchableOpacity>
               )}
             </StyledView>
-            {corners.length >= 2 && metrics ? (
+            {exportData && metrics && corners.length >= 2 ? (
                 <>
-                  <CornersMap corners={corners} metrics={metrics} />
+                  <PlanPreview layout={exportData} annotations={annotations} zones={zones} />
                   <StyledView className="mt-3 space-y-1">
                     <StyledText className="text-sm text-gray-700">
                       Perimeter: {metrics.perim.toFixed(2)} m
@@ -174,6 +183,22 @@ const PreviewScreen: React.FC<PreviewScreenProps> = ({
                 </StyledText>
             )}
           </StyledView>
+          <StyledTouchableOpacity
+              onPress={onAnnotationEdit}
+              className={`px-4 py-3 rounded-lg w-full mt-2 border ${
+                isAnnotationEditRecording ? 'bg-amber-50 border-amber-400' : 'bg-white border-green-200'
+              }`}
+              activeOpacity={0.7}
+              disabled={editButtonDisabled}
+              style={{ opacity: editButtonDisabled ? 0.6 : 1 }}
+          >
+            <StyledText className="text-green-800 text-base font-semibold text-center">
+              {isAnnotationEditRecording ? 'Finish edit recording' : 'Edit object placements'}
+            </StyledText>
+          </StyledTouchableOpacity>
+          {annotationEditStatus ? (
+              <StyledText className="text-xs text-gray-600 mt-1 text-center">{annotationEditStatus}</StyledText>
+          ) : null}
 
           <StyledView className="flex-row gap-2 justify-center mt-3 w-full">
             <StyledTouchableOpacity
@@ -216,6 +241,11 @@ const PreviewScreen: React.FC<PreviewScreenProps> = ({
               />
             </StyledView>
           </StyledTouchableOpacity>
+          {aiStatus ? (
+              <StyledText className={`text-xs mt-2 text-center ${aiStatus.className}`}>
+                {aiStatus.text}
+              </StyledText>
+          ) : null}
           {!exportReady && (
               <StyledText className="text-xs text-gray-500 mt-2 text-center">
                 Add at least two corners to enable export.
@@ -224,15 +254,7 @@ const PreviewScreen: React.FC<PreviewScreenProps> = ({
 
           {/* Transcript header + re-transcribe button */}
           <StyledView className="flex-row items-center justify-between w-full mt-4 mb-1">
-            <StyledView className="flex-row items-center">
-              <StyledText className="font-bold text-left">Transcript:</StyledText>
-              <InfoButton
-                label="Transcript"
-                message="This is the voice-to-text version of your walkthrough. Re-transcribe if something looks off."
-                size={18}
-                style={{ marginLeft: 6 }}
-              />
-            </StyledView>
+            <StyledText className="font-bold text-left">Transcript (auto-generated):</StyledText>
             <StyledTouchableOpacity
                 onPress={onRetranscribe}
                 className="bg-green-100 border border-green-200 px-3 py-1 rounded-lg"
@@ -241,7 +263,7 @@ const PreviewScreen: React.FC<PreviewScreenProps> = ({
                 style={{ opacity: isProcessing || !videoUri ? 0.6 : 1 }}
             >
               <StyledText className="text-green-800 text-xs font-semibold">
-                {isProcessing ? 'Transcribing…' : 'Re-transcribe'}
+                {isProcessing ? 'Transcribing...' : 'Re-transcribe'}
               </StyledText>
             </StyledTouchableOpacity>
           </StyledView>
@@ -284,29 +306,15 @@ const PreviewScreen: React.FC<PreviewScreenProps> = ({
                 className="bg-green-100 border border-green-200 px-4 py-3 rounded-lg flex-1"
                 activeOpacity={0.7}
             >
-              <StyledText
-                className="text-green-800 text-base font-semibold text-center"
-                numberOfLines={1}
-                ellipsizeMode="clip"
-                adjustsFontSizeToFit
-                minimumFontScale={0.9}
-              >
-                Measurements
-              </StyledText>
+              <StyledText className="text-green-800 text-base font-semibold text-center">Measurements</StyledText>
             </StyledTouchableOpacity>
             <StyledTouchableOpacity
                 onPress={() => onNavigate(Screen.Certification)}
                 className="bg-green-600 px-4 py-3 rounded-lg flex-1"
                 activeOpacity={0.7}
             >
-              <StyledText
-                className="text-white text-base font-semibold text-center"
-                numberOfLines={1}
-                ellipsizeMode="clip"
-                adjustsFontSizeToFit
-                minimumFontScale={0.9}
-              >
-                Certifications
+              <StyledText className="text-white text-base font-semibold text-center">
+                Continue to Certifications
               </StyledText>
             </StyledTouchableOpacity>
           </StyledView>
@@ -314,5 +322,144 @@ const PreviewScreen: React.FC<PreviewScreenProps> = ({
       </ScrollView>
   );
 };
+
+type PlanPreviewProps = {
+  layout: CornerExportData;
+  annotations: GardenAnnotation[];
+  zones: GardenZone[];
+};
+
+type XY = { x: number; y: number };
+
+const PlanPreview: React.FC<PlanPreviewProps> = ({ layout, annotations, zones }) => {
+  const [containerSize, setContainerSize] = React.useState({ width: 0, height: 0 });
+
+  const fitted = React.useMemo(() => {
+    if (!layout?.points?.length || !containerSize.width || !containerSize.height) {
+      return null;
+    }
+    return fitPlanToView(layout.points, containerSize.width, containerSize.height, 20);
+  }, [layout, containerSize]);
+
+  const handleLayout = React.useCallback((event: LayoutChangeEvent) => {
+    const { width, height } = event.nativeEvent.layout;
+    if (width !== containerSize.width || height !== containerSize.height) {
+      setContainerSize({ width, height });
+    }
+  }, [containerSize]);
+
+  return (
+      <StyledView
+          className="w-full h-[240px] rounded-lg border border-green-200 bg-[#eaf6ea] overflow-hidden mt-1"
+          onLayout={handleLayout}
+      >
+        {fitted ? (
+            <Svg width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+              {(zones ?? [])
+                  .filter((zone) => Array.isArray(zone.points) && zone.points.length >= 3)
+                  .map((zone) => {
+                    const fittedPoints = zone.points.map((p) => fitted.toFit(p));
+                    const pointsAttr = fittedPoints.map((p) => `${p.x},${p.y}`).join(' ');
+                    const fill = zoneFillColor(zone.type);
+                    const stroke = zoneStrokeColor(zone.type);
+                    return (
+                        <Polygon
+                            key={zone.id ?? pointsAttr}
+                            points={pointsAttr}
+                            stroke={stroke}
+                            strokeWidth={1.5}
+                            strokeOpacity={0.85}
+                            fill={fill}
+                            fillOpacity={0.22}
+                        />
+                    );
+                  })}
+              {layout.closed ? (
+                  <Polygon
+                      points={fitted.fittedPts.map((p) => `${p.x},${p.y}`).join(' ')}
+                      stroke="#15803d"
+                      strokeWidth={2}
+                      strokeOpacity={0.95}
+                      fill="#bbf7d0"
+                      fillOpacity={0.2}
+                  />
+              ) : (
+                  <Polyline
+                      points={fitted.fittedPts.map((p) => `${p.x},${p.y}`).join(' ')}
+                      stroke="#15803d"
+                      strokeWidth={2}
+                      strokeOpacity={0.95}
+                      fill="none"
+                  />
+              )}
+              {fitted.fittedPts.map((p, idx) => (
+                  <G key={`corner-${idx}`}>
+                    <Circle cx={p.x} cy={p.y} r={3.2} fill="#14532d" />
+                  </G>
+              ))}
+              {(annotations ?? []).map((ann, index) => {
+                const point = fitted.toFit({ x: ann.x, y: ann.y });
+                const key = `${ann.id ?? 'ann'}-${index}`;
+                return (
+                    <G key={key} x={point.x} y={point.y}>
+                      {getAnnotationIcon(ann.type, 16)}
+                    </G>
+                );
+              })}
+            </Svg>
+        ) : (
+            <StyledView className="flex-1 items-center justify-center">
+              <StyledText className="text-sm text-gray-600">Collect more corners to preview the map.</StyledText>
+            </StyledView>
+        )}
+      </StyledView>
+  );
+};
+
+function fitPlanToView(
+    pts: XY[],
+    width: number,
+    height: number,
+    padding = 12,
+) {
+  if (!pts.length) {
+    return null;
+  }
+  let minX = pts[0].x;
+  let minY = pts[0].y;
+  let maxX = pts[0].x;
+  let maxY = pts[0].y;
+  for (const p of pts) {
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  }
+  const w = Math.max(1, maxX - minX);
+  const h = Math.max(1, maxY - minY);
+  const scaleX = (width - 2 * padding) / w;
+  const scaleY = (height - 2 * padding) / h;
+  const scale = Math.min(scaleX, scaleY);
+  const tx = -minX * scale + padding;
+  const ty = -minY * scale + padding;
+  const toFit = (p: XY) => ({ x: p.x * scale + tx, y: p.y * scale + ty });
+  return { toFit, fittedPts: pts.map(toFit) };
+}
+
+function zoneFillColor(type?: string) {
+  const t = (type || '').toLowerCase();
+  if (t === 'soil') return '#8B5A2B';
+  if (t === 'grass') return '#2E8B57';
+  if (t === 'concrete') return '#9E9E9E';
+  return '#4b5563';
+}
+
+function zoneStrokeColor(type?: string) {
+  const t = (type || '').toLowerCase();
+  if (t === 'soil') return '#5E3B1C';
+  if (t === 'grass') return '#1F5E3B';
+  if (t === 'concrete') return '#707070';
+  return '#374151';
+}
 
 export default PreviewScreen;
