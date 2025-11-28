@@ -137,8 +137,8 @@ const PreviewScreen: React.FC<PreviewScreenProps> = ({
 
   return (
       <ScrollView>
-        <StyledView className="p-5 items-center">
-          <StyledText className="text-xl font-bold text-gray-800 mb-2">Preview Submission</StyledText>
+        <StyledView className="px-4 pt-3 pb-4 items-center">
+          <StyledText className="text-xl font-bold text-gray-800 mb-1">Preview Submission</StyledText>
           {videoUri && (
               <Video
                   ref={video}
@@ -254,7 +254,7 @@ const PreviewScreen: React.FC<PreviewScreenProps> = ({
 
           {/* Transcript header + re-transcribe button */}
           <StyledView className="flex-row items-center justify-between w-full mt-4 mb-1">
-            <StyledText className="font-bold text-left">Transcript (auto-generated):</StyledText>
+            <StyledText className="font-bold text-left">Transcript:</StyledText>
             <StyledTouchableOpacity
                 onPress={onRetranscribe}
                 className="bg-green-100 border border-green-200 px-3 py-1 rounded-lg"
@@ -306,7 +306,7 @@ const PreviewScreen: React.FC<PreviewScreenProps> = ({
                 className="bg-green-100 border border-green-200 px-4 py-3 rounded-lg flex-1"
                 activeOpacity={0.7}
             >
-              <StyledText className="text-green-800 text-base font-semibold text-center">Measurements</StyledText>
+              <StyledText className="text-green-800 text-base font-semibold text-center">Measurement</StyledText>
             </StyledTouchableOpacity>
             <StyledTouchableOpacity
                 onPress={() => onNavigate(Screen.Certification)}
@@ -314,7 +314,7 @@ const PreviewScreen: React.FC<PreviewScreenProps> = ({
                 activeOpacity={0.7}
             >
               <StyledText className="text-white text-base font-semibold text-center">
-                Continue to Certifications
+                Certifications
               </StyledText>
             </StyledTouchableOpacity>
           </StyledView>
