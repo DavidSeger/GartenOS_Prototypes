@@ -12,7 +12,7 @@ import Svg, {
 } from 'react-native-svg';
 
 type XY = { x: number; y: number };
-type Annotation = { id: string; type: 'tree' | 'water' | string; x: number; y: number };
+type Annotation = { id: string; type: 'tree' | 'water' | string; x: number; y: number; size?: 'small' | 'medium' | 'large' };
 type Zone = { id: string; type?: string; points: XY[] };
 const TREE_COLOR = '#0b8043';
 const WATER_COLOR = '#1e88e5';
@@ -38,9 +38,75 @@ const VIEW_W = 360;
 const VIEW_H = 360;
 
 function normalizeGardenJson(raw: any): GardenJson {
-    // Old shape already matches
+    const toXY = (p: any): XY | null => {
+        if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) {
+            return { x: Number(p.x), y: Number(p.y) };
+        }
+        const lat = Number.isFinite(p?.lat) ? Number(p.lat) : Number.isFinite(p?.latitude) ? Number(p.latitude) : null;
+        const lng = Number.isFinite(p?.lng) ? Number(p.lng) : Number.isFinite(p?.lon) ? Number(p.lon) : Number.isFinite(p?.longitude) ? Number(p.longitude) : null;
+        if (lat != null && lng != null) {
+            // Use lon/lat directly as a planar coordinate so we can render
+            return { x: lng, y: lat };
+        }
+        return null;
+    };
+
+    const normalizePoints = (pts: any): XY[] =>
+        Array.isArray(pts)
+            ? pts
+                .map(toXY)
+                .filter((p): p is XY => Boolean(p))
+            : [];
+
+    const normalizeAnnotations = (arr: any[] | undefined, translate: (p: any) => XY | null): Annotation[] =>
+        Array.isArray(arr)
+            ? arr
+                .map((a) => {
+                    const point = translate(a?.latlng ?? a);
+                    if (!point) return null;
+                    const size = typeof a?.size === 'string' ? (a.size as Annotation['size']) : undefined;
+                    return {
+                        id: a?.id || Math.random().toString(36).slice(2, 8),
+                        type: a?.type || 'tree',
+                        x: point.x,
+                        y: point.y,
+                        size,
+                    };
+                })
+                .filter((a): a is Annotation => Boolean(a))
+            : [];
+
+    const normalizeZones = (arr: any[] | undefined, translate: (p: any) => XY | null): Zone[] =>
+        Array.isArray(arr)
+            ? arr
+                .map((z) => {
+                    const pts = normalizePoints(z?.points ?? []);
+                    if (pts.length < 2) return null;
+                    return {
+                        id: z?.id || Math.random().toString(36).slice(2, 8),
+                        type: z?.type,
+                        points: pts,
+                    };
+                })
+                .filter((z): z is Zone => Boolean(z))
+            : [];
+
     if (raw && Array.isArray(raw.points)) {
-        const gj: GardenJson = raw;
+        const points = normalizePoints(raw.points);
+        const gj: GardenJson = {
+            points,
+            closed: !!raw.closed,
+            surface: raw.surface,
+            scale: typeof raw.scale === 'number' ? raw.scale : undefined,
+            unit: raw.unit,
+            calibratedEdgeIndex: raw.calibratedEdgeIndex,
+            annotations: normalizeAnnotations(raw.annotations, toXY),
+            zones: normalizeZones(raw.zones, toXY),
+            _meta: raw._meta,
+            _metrics: raw._metrics,
+            transcript: raw.transcript,
+            videoUri: raw.videoUri,
+        };
         // if someone provided `metrics` on old files, surface them
         if (!gj._metrics && raw.metrics) {
             gj._metrics = {
@@ -61,10 +127,10 @@ function normalizeGardenJson(raw: any): GardenJson {
     const cd = raw?.cornerDrawing;
     if (cd && Array.isArray(cd.points)) {
         const gj: GardenJson = {
-            points: cd.points,                 // <- main change
+            points: normalizePoints(cd.points),                 // <- main change
             closed: !!cd.closed,
             scale: typeof cd.scale === 'number' ? cd.scale : undefined,
-            annotations: Array.isArray(raw.annotations) ? raw.annotations : undefined,
+            annotations: normalizeAnnotations(raw.annotations, toXY),
             // carry over extras if you want them around
             transcript: typeof raw.transcript === 'string' ? raw.transcript : undefined,
             videoUri: typeof raw.videoUri === 'string' ? raw.videoUri : undefined,
@@ -78,6 +144,7 @@ function normalizeGardenJson(raw: any): GardenJson {
                 ts: typeof raw.exportedAt === 'number' ? raw.exportedAt : undefined,
                 app: raw.version != null ? `garden-mapper-v${raw.version}` : undefined,
             },
+            zones: normalizeZones(raw.zones, toXY),
         };
         return gj;
     }
@@ -131,8 +198,11 @@ export default function Index() {
             if (p.x > maxX) maxX = p.x;
             if (p.y > maxY) maxY = p.y;
         }
-        const w = Math.max(1, maxX - minX);
-        const h = Math.max(1, maxY - minY);
+        // Use the true span so lat/lng-based coords don’t collapse to a single point.
+        const spanX = maxX - minX;
+        const spanY = maxY - minY;
+        const w = spanX === 0 ? 1 : spanX;
+        const h = spanY === 0 ? 1 : spanY;
 
         const sx = (VIEW_W - 2 * padding) / w;
         const sy = (VIEW_H - 2 * padding) / h;
@@ -201,9 +271,9 @@ export default function Index() {
                     <View style={styles.card}>
                         <Svg width={VIEW_W} height={VIEW_H} style={styles.svg}>
                             <G>
-                                {fitted.fittedZones.map(zone => (
+                                {fitted.fittedZones.map((zone, idx) => (
                                     <Polygon
-                                        key={zone.id}
+                                        key={`${zone.id}-${idx}`}
                                         points={toSvgPoints(zone.points)}
                                         stroke={zoneStrokeColor(zone.type)}
                                         fill={zoneFillColor(zone.type)}
@@ -238,10 +308,10 @@ export default function Index() {
                                     </G>
                                 ))}
 
-                                {fitted.fittedAnnotations.map(a => (
-                                    <G key={a.id} x={a.x} y={a.y}>
+                                {fitted.fittedAnnotations.map((a, idx) => (
+                                    <G key={`${a.id}-${idx}`} x={a.x} y={a.y}>
                                         {a.type === 'tree' ? (
-                                            <TreeIcon size={16} />
+                                            <TreeIcon size={a.size === 'small' ? 12 : a.size === 'large' ? 20 : 16} />
                                         ) : a.type === 'water' ? (
                                             <WaterIcon size={16} />
                                         ) : (
@@ -272,9 +342,10 @@ export default function Index() {
                         </View>
 
                         <View style={[styles.legend, { marginTop: 8, flexWrap: 'wrap' }]}>
-                            <ZoneLegendItem label="Soil" type="soil" />
-                            <ZoneLegendItem label="Grass" type="grass" />
-                            <ZoneLegendItem label="Concrete" type="concrete" />
+                        <ZoneLegendItem label="Soil" type="soil" />
+                        <ZoneLegendItem label="Grass" type="grass" />
+                        <ZoneLegendItem label="Concrete" type="concrete" />
+                        <ZoneLegendItem label="Water" type="water" />
                         </View>
 
                         <View style={styles.stats}>
@@ -367,6 +438,7 @@ function zoneFillColor(type?: string) {
     if (t === 'soil') return '#8B5A2B';
     if (t === 'grass') return '#2E8B57';
     if (t === 'concrete') return '#9E9E9E';
+    if (t === 'water') return '#1e40af';
     return '#888888';
 }
 
@@ -375,6 +447,7 @@ function zoneStrokeColor(type?: string) {
     if (t === 'soil') return '#5E3B1C';
     if (t === 'grass') return '#1F5E3B';
     if (t === 'concrete') return '#707070';
+    if (t === 'water') return '#1d4ed8';
     return '#666666';
 }
 
