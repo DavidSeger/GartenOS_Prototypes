@@ -400,9 +400,11 @@ const PlanPreview: React.FC<PlanPreviewProps> = ({ layout, annotations, zones })
               {(annotations ?? []).map((ann, index) => {
                 const point = fitted.toFit({ x: ann.x, y: ann.y });
                 const key = `${ann.id ?? 'ann'}-${index}`;
+                const iconSize =
+                    ann.size === 'small' ? 12 : ann.size === 'large' ? 20 : 16;
                 return (
                     <G key={key} x={point.x} y={point.y}>
-                      {getAnnotationIcon(ann.type, 16)}
+                      {getAnnotationIcon(ann.type, iconSize)}
                     </G>
                 );
               })}
@@ -451,6 +453,7 @@ function zoneFillColor(type?: string) {
   if (t === 'soil') return '#8B5A2B';
   if (t === 'grass') return '#2E8B57';
   if (t === 'concrete') return '#9E9E9E';
+  if (t === 'water') return '#1e40af';
   return '#4b5563';
 }
 
@@ -459,6 +462,7 @@ function zoneStrokeColor(type?: string) {
   if (t === 'soil') return '#5E3B1C';
   if (t === 'grass') return '#1F5E3B';
   if (t === 'concrete') return '#707070';
+  if (t === 'water') return '#1d4ed8';
   return '#374151';
 }
 

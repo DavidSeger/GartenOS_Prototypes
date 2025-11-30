@@ -10,7 +10,7 @@ const BASE_SYSTEM_PROMPT =
   ' a timestamped walkthrough transcript, and possibly timestamped heading/orientation and GPS data. ' +
   'You will also receive edges[] with bearings/lengths derived from the polygon and segmentEdgeHints[] that map transcript segments to their most likely edge based on heading. ' +
   '' +
-  'Your ONLY job is to suggest NEW object placements (trees, shrubs, water, beds, structures) as map coordinates' +
+  'Your ONLY job is to suggest NEW object placements (trees, shrubs, beds, structures) as map coordinates' +
   ' and append them to the existing annotations according to the provided schema. ' +
   'In addition, identify any described ground surfaces or subzones (soil beds, patios, lawns, concrete pads, etc.) ' +
   'and return them under zones[] using polygons that sit fully inside the garden. ' +
@@ -24,22 +24,24 @@ const BASE_SYSTEM_PROMPT =
   '- Always make sure that object IDs in the JSON are unique, no duplicate identifiers. ' +
   '' +
   'Subzone + surface logic: ' +
-  '- When the entire garden surface is described ("the garden ground is made of grass"), set the root-level `surface`. ' +
-  '- When the narrator describes local materials (soil patch, concrete patio, grass in one corner), create a zone polygon under zones[]. ' +
-  '- Each zone polygon must have at least three points with coordinates in the same space as layout.points, always inside the main polygon. ' +
-  '- Keep zone types literal (soil, grass, gravel, mulch, concrete, etc.) unless an obvious synonym is required. ' +
-  '- Use described dimensions and relative positions to size/locate polygons; if measurements are missing, infer approximate proportions but stay within the polygon. ' +
-  '- Convert spoken dimensions (e.g., "3 by 5 meters") into polygon width/height aligned with the mentioned edge or reference point whenever possible. ' +
-  '- Never omit a described surface/walkway/patio: if the transcript mentions it, you MUST add a zone approximating its footprint, even if it requires reasonable estimation. ' +
-  '' +
-  'Placement logic (very important): ' +
-  '1) Treat the transcript as a sequence of segments tied to time. Whenever the narrator says things like "now we are at this edge", "now I am here", or when heading changes strongly, start a NEW edge segment. ' +
-  '2) For each segment where trees/objects are mentioned "along the edge" or "to the left/right while walking", you MUST first decide which polygon edge the user is likely walking along. ' +
-  '3) Use segmentEdgeHints[].candidateEdgeIndex when provided; otherwise compare current heading/orientation to the bearing of each edge in edges[] (edge = line between two consecutive polygon/cornerDrawing points) and pick the closest bearing. ' +
-  '4) Once an edge is selected, place the mentioned objects ON THAT EDGE by interpolating positions between the two edge endpoints. Do NOT place them on an arbitrary horizontal or vertical line. Do NOT place them outside the polygon. ' +
-  '5) If the transcript says "three trees in equal distance", distribute exactly three points evenly along the chosen edge segment. ' +
-  '6) If the transcript later says "on the longer edge four trees", treat that as a NEW edge with its own distribution -- do NOT continue the previous line. ' +
-  '7) If you cannot unambiguously map a transcript segment to a polygon edge, set the annotation with an "uncertain": true (if schema allows) and do NOT fall back to a made-up straight line. ' +
+'- When the entire garden surface is described ("the garden ground is made of grass"), set the root-level `surface`. ' +
+'- When the narrator describes local materials (soil patch, concrete patio, grass in one corner), create a zone polygon under zones[]. ' +
+'- Each zone polygon must have at least three points with coordinates in the same space as layout.points, always inside the main polygon. ' +
+'- Keep zone types literal (soil, grass, gravel, mulch, concrete, etc.) unless an obvious synonym is required. ' +
+'- Use described dimensions and relative positions to size/locate polygons; if measurements are missing, infer approximate proportions but stay within the polygon. ' +
+'- Convert spoken dimensions (e.g., "3 by 5 meters") into polygon width/height aligned with the mentioned edge or reference point whenever possible. ' +
+'- Never omit a described surface/walkway/patio: if the transcript mentions it, you MUST add a zone approximating its footprint, even if it requires reasonable estimation. ' +
+'- Any water body (pond, pool, fountain basin) must be represented as a polygon in zones[] with type \"water\"—never as a point object. ' +
+ '' +
+'Placement logic (very important): ' +
+'1) Treat the transcript as a sequence of segments tied to time. Whenever the narrator says things like "now we are at this edge", "now I am here", or when heading changes strongly, start a NEW edge segment. ' +
+'2) For each segment where trees/objects are mentioned "along the edge" or "to the left/right while walking", you MUST first decide which polygon edge the user is likely walking along. ' +
+'3) Use segmentEdgeHints[].candidateEdgeIndex when provided; otherwise compare current heading/orientation to the bearing of each edge in edges[] (edge = line between two consecutive polygon/cornerDrawing points) and pick the closest bearing. ' +
+'4) Once an edge is selected, place the mentioned objects ON THAT EDGE by interpolating positions between the two edge endpoints. Do NOT place them on an arbitrary horizontal or vertical line. Do NOT place them outside the polygon. ' +
+'5) If the transcript says "three trees in equal distance", distribute exactly three points evenly along the chosen edge segment. ' +
+'6) If the transcript later says "on the longer edge four trees", treat that as a NEW edge with its own distribution -- do NOT continue the previous line. ' +
+'7) When a tree size is specified (small/medium/large), populate the size field accordingly; if absent, default to medium. ' +
+'7) If you cannot unambiguously map a transcript segment to a polygon edge, set the annotation with an "uncertain": true (if schema allows) and do NOT fall back to a made-up straight line. ' +
   '' +
   'Directional inference: ' +
   '- Phrases like "to the left of me" / "to the right of me" must be resolved relative' +
@@ -138,6 +140,7 @@ type PlannerResponse = {
     y: number;
     label?: string;
     confidence?: number;
+    size?: 'small' | 'medium' | 'large';
   }>;
   zones?: Array<{
     type: string;
@@ -179,16 +182,17 @@ async function runPlannerCompletion(
                 items: {
                   type: 'object',
                   additionalProperties: false,
-                  required: ['type', 'x', 'y'],
-                  properties: {
-                    type: { type: 'string' },
-                    label: { type: 'string' },
-                    confidence: { type: 'number', minimum: 0, maximum: 1 },
-                    x: { type: 'number' },
-                    y: { type: 'number' },
-                  },
-                },
-              },
+          required: ['type', 'x', 'y'],
+          properties: {
+            type: { type: 'string' },
+            label: { type: 'string' },
+            confidence: { type: 'number', minimum: 0, maximum: 1 },
+            size: { type: 'string', enum: ['small', 'medium', 'large'] },
+            x: { type: 'number' },
+            y: { type: 'number' },
+          },
+        },
+      },
               zones: {
                 type: 'array',
                 items: {
@@ -279,8 +283,10 @@ export async function suggestGardenPlanWithChatGPT(
 
   const parsed = await runPlannerCompletion(
     BASE_SYSTEM_PROMPT,
-    'Add trees/shrubs/water features plus any described ground subzones or surfaces from the transcript. ' +
-      'Whenever the transcript mentions a surface material (grass, soil, gravel, mulch, concrete, pathway, patio, field, etc.) for a specific area, you MUST emit a polygon entry in zones[] representing that area. ' +
+    'Add trees/shrubs (set size small/medium/large when stated) plus any described ground or water subzones/surfaces from the transcript. ' +
+      'Whenever the transcript mentions a surface material (grass, soil, gravel, mulch, concrete, pathway, patio, field, water, etc.) for a specific area, you MUST emit a polygon entry in zones[] representing that area. ' +
+      'Bodies of water must be represented as zones of type \"water\" with polygon points, NOT as point objects. ' +
+      'Trees must include a size of small/medium/large when the transcript mentions it. ' +
       'If the entire garden ground material is given, set the root-level surface string. ' +
       'Use headings to infer relative direction. ' +
       'Use edges[] and segmentEdgeHints[] to choose the correct edge; align placements to that edge and keep counts per edge exactly as described. ' +
@@ -396,6 +402,10 @@ function normalizePlannerObjects(
       if (!Number.isFinite(x) || !Number.isFinite(y)) {
         return null;
       }
+      if (obj?.type?.trim()?.toLowerCase() === 'water') {
+        // Water should be represented as a zone, not a point annotation.
+        return null;
+      }
       const fallbackId = `${idPrefix}_${index}_${randomId()}`;
       const baseId = obj?.label ? normalizeId(obj.label) : fallbackId;
       const id = ensureUniqueId(baseId, usedIds, fallbackId);
@@ -406,6 +416,7 @@ function normalizePlannerObjects(
         y,
         label: obj?.label?.trim(),
         confidence: obj?.confidence,
+        size: parseSize(obj?.size),
       };
     })
     .filter((obj): obj is GardenAnnotation => Boolean(obj));
@@ -442,12 +453,17 @@ function normalizeEditedPlannerObjects(
       if (!Number.isFinite(x) || !Number.isFinite(y)) {
         return null;
       }
+      if (obj?.type?.trim()?.toLowerCase() === 'water') {
+        // Water should be represented as a zone, not a point annotation.
+        return null;
+      }
       return {
         type: obj?.type?.trim() || 'unknown',
         label: obj?.label?.trim(),
         confidence: obj?.confidence,
         x,
         y,
+        size: parseSize(obj?.size),
       };
     })
     .filter((obj): obj is GardenAnnotation => Boolean(obj));
@@ -695,6 +711,13 @@ function normalizeEditedPlannerZones(
 function normalizeZoneId(label: string) {
   const normalized = normalizeId(label);
   return normalized.startsWith('zone-') ? normalized : `zone-${normalized}`;
+}
+
+function parseSize(value: unknown): GardenAnnotation['size'] | undefined {
+  if (typeof value !== 'string') return undefined;
+  const v = value.trim().toLowerCase();
+  if (v === 'small' || v === 'medium' || v === 'large') return v;
+  return undefined;
 }
 
 function buildEdgeMetadata(points: GardenLayoutSummary['points'], closed = true): EdgeMetadata[] {
