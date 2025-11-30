@@ -377,7 +377,9 @@
 
   const zoneList = document.getElementById('zoneList');
 
+  const btnExport = document.getElementById('btnExport');
 
+  const fileInput = document.getElementById('fileInput');
 
   // New Map Controls
 
@@ -1129,6 +1131,118 @@
     }
 
 
+
+  // ----- Persistence -----
+
+  function toPlainLatLng(ll){
+    if(!ll) return null;
+    const lat = ll.lat ?? ll.latitude ?? ll[0];
+    const lng = ll.lng ?? ll.lon ?? ll.longitude ?? ll[1];
+    if(typeof lat !== 'number' || typeof lng !== 'number') return null;
+    return { lat, lng };
+  }
+
+  function normalizeGardenJson(raw){
+    if(!raw || !Array.isArray(raw.points)){
+      throw new Error('Invalid file: expected `points` array.');
+    }
+
+    const toLatLng = (p)=>{
+      const plain = toPlainLatLng(p);
+      return plain ? L.latLng(plain.lat, plain.lng) : null;
+    };
+
+    const points = raw.points.map(toLatLng).filter(Boolean);
+    const annotations = Array.isArray(raw.annotations) ? raw.annotations.map(a=>{
+      const latlng = toLatLng(a.latlng);
+      if(!latlng) return null;
+      return { id: a.id || 'a'+Math.random().toString(36).slice(2,8), type: a.type || 'tree', latlng, size: a.size };
+    }).filter(Boolean) : [];
+
+    const zones = Array.isArray(raw.zones) ? raw.zones.map(z=>{
+      const pts = Array.isArray(z.points) ? z.points.map(toLatLng).filter(Boolean) : [];
+      if(pts.length < 3) return null;
+      return { id: z.id || 'z'+Math.random().toString(36).slice(2,8), type: z.type || 'grass', points: pts };
+    }).filter(Boolean) : [];
+
+    return {
+      points,
+      closed: !!raw.closed,
+      surface: raw.surface || 'grass',
+      unit: raw.unit || 'm',
+      calibratedEdgeIndex: raw.calibratedEdgeIndex ?? null,
+      correctionFactor: typeof raw.correctionFactor === 'number' ? raw.correctionFactor : 1,
+      annotations,
+      zones
+    };
+  }
+
+  function buildExportPayload(){
+    return {
+      points: state.points.map(toPlainLatLng).filter(Boolean),
+      closed: state.closed,
+      surface: state.surface,
+      unit: state.unit,
+      calibratedEdgeIndex: state.calibratedEdgeIndex,
+      correctionFactor: state.correctionFactor,
+      annotations: state.annotations.map(a=>({
+        id: a.id,
+        type: a.type,
+        size: a.size,
+        latlng: toPlainLatLng(a.latlng)
+      })).filter(a=>a.latlng),
+      zones: state.zones.map(z=>({
+        id: z.id,
+        type: z.type,
+        points: (z.points||[]).map(toPlainLatLng).filter(Boolean)
+      })).filter(z=>z.points && z.points.length>=3),
+      _meta:{ ts: Date.now(), app:'garden-mapper-v2' }
+    };
+  }
+
+  btnExport?.addEventListener('click', ()=>{
+    try{
+      const payload = buildExportPayload();
+      const blob = new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'garden-map.json';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }catch(err){
+      console.error(err);
+      alert('Unable to export map.');
+    }
+  });
+
+  fileInput?.addEventListener('change', (e)=>{
+    const file = e.target.files?.[0]; if(!file) return;
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      try{
+        const raw = JSON.parse(reader.result);
+        const data = normalizeGardenJson(raw);
+        Object.assign(state, {
+          points: data.points,
+          closed: data.closed,
+          surface: data.surface,
+          unit: data.unit,
+          calibratedEdgeIndex: data.calibratedEdgeIndex,
+          correctionFactor: data.correctionFactor,
+          annotations: data.annotations,
+          zones: data.zones,
+          zoneDraft: []
+        });
+        if(surfaceSel) surfaceSel.value = state.surface;
+        unitSelect.value = state.unit;
+        draw();
+      }catch(err){
+        console.error(err);
+        alert('Invalid file.');
+      }
+    };
+    reader.readAsText(file);
+  });
 
   draw(); // Initial draw
 
