@@ -677,15 +677,98 @@ export default function App() {
             setAiPlanStatus('ready');
             setAiPlanError(null);
           }
+          const exportTimestamp = Date.now();
+          const surfaceValue = surfaceForExport ?? 'grass';
+          const paddingPx = exportData.extent?.padding ?? 16;
+          const xyPoints = metrics.xy ?? [];
+          let minX = xyPoints[0]?.x ?? 0;
+          let minY = xyPoints[0]?.y ?? 0;
+          for (const pt of xyPoints) {
+            if (pt.x < minX) minX = pt.x;
+            if (pt.y < minY) minY = pt.y;
+          }
+          const toLatLngFromLayout = (pt: { x: number; y: number } | null | undefined) => {
+            if (
+                !pt ||
+                !Number.isFinite(pt.x) ||
+                !Number.isFinite(pt.y) ||
+                !Number.isFinite(exportData.scale)
+            ) {
+              return null;
+            }
+            const { lat, lon } = metrics.proj.toLatLon(
+                (pt.x - paddingPx) * exportData.scale + minX,
+                (pt.y - paddingPx) * exportData.scale + minY,
+            );
+            if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+              return null;
+            }
+            return { lat: Number(lat.toFixed(8)), lng: Number(lon.toFixed(8)) };
+          };
+          const annotationsGeo =
+              (annotationsForExport ?? [])
+                  .map((ann) => {
+                    const latlng = toLatLngFromLayout(ann);
+                    if (!latlng) {
+                      return null;
+                    }
+                    return {
+                      id: ann.id ?? createAnnotationId(),
+                      type: ann.type?.trim() || 'unknown',
+                      size: normalizeTreeSize(ann.size),
+                      latlng,
+                    };
+                  })
+                  .filter((ann): ann is NonNullable<typeof ann> => Boolean(ann));
+          const zonesGeo =
+              (zonesForExport ?? [])
+                  .map((zone, idx) => {
+                    const pts =
+                        (zone.points ?? [])
+                            .map((pt) => toLatLngFromLayout(pt))
+                            .filter((pt): pt is { lat: number; lng: number } => Boolean(pt));
+                    if (pts.length < 3) {
+                      return null;
+                    }
+                    return {
+                      id: zone.id ?? `zone_${idx}_${createAnnotationId()}`,
+                      type: zone.type ?? 'grass',
+                      points: pts,
+                    };
+                  })
+                  .filter((zone): zone is NonNullable<typeof zone> => Boolean(zone));
+
+          const boundaryPoints =
+              (metrics.closed && corners.length > 1 ? corners.slice(0, -1) : corners).map((corner) => ({
+                lat: Number(corner.latitude.toFixed(8)),
+                lng: Number(corner.longitude.toFixed(8)),
+              }));
+
+          const expertPayload = {
+            points: boundaryPoints,
+            closed: metrics.closed,
+            surface: surfaceValue,
+            unit: 'm',
+            calibratedEdgeIndex: null,
+            correctionFactor: 1,
+            annotations: annotationsGeo,
+            zones: zonesGeo,
+            _meta: {
+              ts: exportTimestamp,
+              app: 'garden-mapper-v2',
+            },
+          };
+
           const payload = {
+            ...expertPayload,
             version: 1,
-            exportedAt: Date.now(),
+            exportedAt: exportTimestamp,
             transcript: transcriptForExport,
             transcriptSegments,
             headings,
-            annotations: annotationsForExport ?? [],
-            zones: zonesForExport ?? [],
-            surface: surfaceForExport ?? undefined,
+            planarAnnotations: annotationsForExport ?? [],
+            planarZones: zonesForExport ?? [],
+            surface: surfaceValue,
             videoUri,
             gpsTrack: track,
             corners,
@@ -1368,6 +1451,7 @@ function normalizeAnnotationsForLayout(
     type: ann.type?.trim() || 'unknown',
     label: ann.label?.trim(),
     confidence: ann.confidence,
+    size: normalizeTreeSize(ann.size),
     x: clampNumber(ann.x, minX, maxX),
     y: clampNumber(ann.y, minY, maxY),
   }));
@@ -1419,6 +1503,17 @@ function clampNumber(value: number, min: number, max: number) {
     return min;
   }
   return Math.min(Math.max(value, min), max);
+}
+
+function normalizeTreeSize(value: unknown): GardenAnnotation['size'] | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  const v = value.trim().toLowerCase();
+  if (v === 'small' || v === 'medium' || v === 'large') {
+    return v;
+  }
+  return undefined;
 }
 
 function enforceMinSpacing(
