@@ -3,7 +3,7 @@ import { TranscriptSegment } from './geminiService.ts';
 const OPENAI_API_KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
 const OPENAI_API_URL =
   process.env.EXPO_PUBLIC_OPENAI_API_URL ?? 'https://api.openai.com/v1/chat/completions';
-const OPENAI_MODEL = process.env.EXPO_PUBLIC_OPENAI_MODEL ?? 'gpt-4o-mini';
+const OPENAI_MODEL = process.env.EXPO_PUBLIC_OPENAI_MODEL ?? 'gpt-5-mini-2025-08-07';
 const BASE_SYSTEM_PROMPT =
   'You are GartenOS, a meticulous landscape assistant for a garden biodiversity app. ' +
   'You receive a FIXED garden JSON map (polygon, scale, extent, existing annotations/zones),' +
@@ -167,7 +167,9 @@ async function runPlannerCompletion(
     },
     body: JSON.stringify({
       model: OPENAI_MODEL,
-      temperature: 0.2,
+      reasoning: {
+        "effort": "high"
+      },
       response_format: {
         type: 'json_schema',
         json_schema: {
