@@ -1,0 +1,341 @@
+{
+  "points": [
+    {
+      "lat": 47.13960497,
+      "lng": 9.51773371
+    },
+    {
+      "lat": 47.13964896,
+      "lng": 9.51784452
+    },
+    {
+      "lat": 47.13954343,
+      "lng": 9.51805377
+    },
+    {
+      "lat": 47.13947113,
+      "lng": 9.51797284
+    },
+    {
+      "lat": 47.13960497,
+      "lng": 9.51773371
+    }
+  ],
+  "closed": true,
+  "surface": "grass",
+  "unit": "m",
+  "calibratedEdgeIndex": null,
+  "correctionFactor": 1,
+  "annotations": [
+    {
+      "id": "tree",
+      "type": "tree",
+      "size": "medium",
+      "latlng": {
+        "lat": 47.13950447,
+        "lng": 9.5179131
+      }
+    },
+    {
+      "id": "tree-1",
+      "type": "tree",
+      "size": "large",
+      "latlng": {
+        "lat": 47.13953782,
+        "lng": 9.51785331
+      }
+    },
+    {
+      "id": "tree-2",
+      "type": "tree",
+      "size": "medium",
+      "latlng": {
+        "lat": 47.13957116,
+        "lng": 9.51779351
+      }
+    },
+    {
+      "id": "tree-3",
+      "type": "tree",
+      "size": "small",
+      "latlng": {
+        "lat": 47.13962777,
+        "lng": 9.51788668
+      }
+    },
+    {
+      "id": "tree-4",
+      "type": "tree",
+      "size": "large",
+      "latlng": {
+        "lat": 47.13960659,
+        "lng": 9.5179284
+      }
+    },
+    {
+      "id": "tree-5",
+      "type": "tree",
+      "size": "small",
+      "latlng": {
+        "lat": 47.1395854,
+        "lng": 9.51797012
+      }
+    },
+    {
+      "id": "tree-6",
+      "type": "tree",
+      "size": "small",
+      "latlng": {
+        "lat": 47.13956421,
+        "lng": 9.51801184
+      }
+    }
+  ],
+  "zones": [
+    {
+      "id": "zone-concrete-path",
+      "type": "concrete",
+      "points": [
+        {
+          "lat": 47.13961113,
+          "lng": 9.5177504
+        },
+        {
+          "lat": 47.13964234,
+          "lng": 9.51782828
+        },
+        {
+          "lat": 47.13962729,
+          "lng": 9.51784281
+        },
+        {
+          "lat": 47.13960406,
+          "lng": 9.51777465
+        }
+      ]
+    },
+    {
+      "id": "zone-pond",
+      "type": "water",
+      "points": [
+        {
+          "lat": 47.13955792,
+          "lng": 9.51788807
+        },
+        {
+          "lat": 47.13955792,
+          "lng": 9.51791449
+        },
+        {
+          "lat": 47.13957589,
+          "lng": 9.51791449
+        },
+        {
+          "lat": 47.13957589,
+          "lng": 9.51788807
+        }
+      ]
+    },
+    {
+      "id": "zone-wheat-soil",
+      "type": "soil",
+      "points": [
+        {
+          "lat": 47.13955343,
+          "lng": 9.51794092
+        },
+        {
+          "lat": 47.13955343,
+          "lng": 9.51796734
+        },
+        {
+          "lat": 47.13958038,
+          "lng": 9.51796734
+        },
+        {
+          "lat": 47.13958038,
+          "lng": 9.51794092
+        }
+      ]
+    }
+  ],
+  "_meta": {
+    "ts": 1764845277762,
+    "source": "replayObjectPlanner",
+    "fixture": "garden-session-test.json",
+    "latLngTransform": true
+  },
+  "_debug": {
+    "fixturePath": "C:\\Users\\david\\WebstormProjects\\GartenOS\\GartenOSMobile_2.0\\Testing\\garden-session-test.json",
+    "cornerDrawing": {
+      "points": [
+        {
+          "x": 16,
+          "y": 157
+        },
+        {
+          "x": 96,
+          "y": 204
+        },
+        {
+          "x": 246,
+          "y": 92
+        },
+        {
+          "x": 188,
+          "y": 16
+        }
+      ],
+      "closed": true,
+      "scale": 0.10529851636674338,
+      "extent": {
+        "minLat": 47.13947113084726,
+        "maxLat": 47.13964896242856,
+        "minLon": 9.517733714285715,
+        "maxLon": 9.51805376789883,
+        "padding": 16,
+        "width": 360,
+        "height": 220
+      }
+    },
+    "annotationsPlanar": [
+      {
+        "id": "tree",
+        "type": "tree",
+        "x": 145,
+        "y": 51.25,
+        "label": "tree",
+        "confidence": 0.9,
+        "size": "medium"
+      },
+      {
+        "id": "tree-1",
+        "type": "tree",
+        "x": 102,
+        "y": 86.5,
+        "label": "tree",
+        "confidence": 0.9,
+        "size": "large"
+      },
+      {
+        "id": "tree-2",
+        "type": "tree",
+        "x": 59,
+        "y": 121.75,
+        "label": "tree",
+        "confidence": 0.9,
+        "size": "medium"
+      },
+      {
+        "id": "tree-3",
+        "type": "tree",
+        "x": 126,
+        "y": 181.6,
+        "label": "tree",
+        "confidence": 0.9,
+        "size": "small"
+      },
+      {
+        "id": "tree-4",
+        "type": "tree",
+        "x": 156,
+        "y": 159.2,
+        "label": "tree",
+        "confidence": 0.9,
+        "size": "large"
+      },
+      {
+        "id": "tree-5",
+        "type": "tree",
+        "x": 186,
+        "y": 136.8,
+        "label": "tree",
+        "confidence": 0.9,
+        "size": "small"
+      },
+      {
+        "id": "tree-6",
+        "type": "tree",
+        "x": 216,
+        "y": 114.4,
+        "label": "tree",
+        "confidence": 0.9,
+        "size": "small"
+      }
+    ],
+    "zonesPlanar": [
+      {
+        "id": "zone-concrete-path",
+        "type": "concrete",
+        "label": "concrete path",
+        "confidence": 0.9,
+        "points": [
+          {
+            "x": 28,
+            "y": 164
+          },
+          {
+            "x": 84,
+            "y": 197
+          },
+          {
+            "x": 94.45,
+            "y": 181.09
+          },
+          {
+            "x": 45.44,
+            "y": 156.53
+          }
+        ]
+      },
+      {
+        "id": "zone-pond",
+        "type": "water",
+        "label": "pond",
+        "confidence": 0.95,
+        "points": [
+          {
+            "x": 127,
+            "y": 107.75
+          },
+          {
+            "x": 146,
+            "y": 107.75
+          },
+          {
+            "x": 146,
+            "y": 126.75
+          },
+          {
+            "x": 127,
+            "y": 126.75
+          }
+        ]
+      },
+      {
+        "id": "zone-wheat-soil",
+        "type": "soil",
+        "label": "wheat soil",
+        "confidence": 0.8,
+        "points": [
+          {
+            "x": 165,
+            "y": 103
+          },
+          {
+            "x": 184,
+            "y": 103
+          },
+          {
+            "x": 184,
+            "y": 131.5
+          },
+          {
+            "x": 165,
+            "y": 131.5
+          }
+        ]
+      }
+    ]
+  }
+}

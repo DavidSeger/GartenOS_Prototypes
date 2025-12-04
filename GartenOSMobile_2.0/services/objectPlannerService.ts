@@ -9,6 +9,10 @@ const BASE_SYSTEM_PROMPT =
   'You receive a FIXED garden JSON map (polygon, scale, extent, existing annotations/zones),' +
   ' a timestamped walkthrough transcript, and possibly timestamped heading/orientation and GPS data. ' +
   'You will also receive edges[] with bearings/lengths derived from the polygon and segmentEdgeHints[] that map transcript segments to their most likely edge based on heading. ' +
+  'Tree-count accuracy is the absolute top priority: never invent extra trees. ' +
+  'If a segment mentions trees without an explicit count, output zero trees for that segment. ' +
+  'When counts conflict, choose the smaller number. ' +
+  'After placing trees, re-check that trees per edge match the described counts; if unsure, return fewer trees with low confidence instead of guessing. ' +
   '' +
   'Your ONLY job is to suggest NEW object placements (trees, shrubs, beds, structures) as map coordinates' +
   ' and append them to the existing annotations according to the provided schema. ' +
@@ -167,9 +171,6 @@ async function runPlannerCompletion(
     },
     body: JSON.stringify({
       model: OPENAI_MODEL,
-      reasoning: {
-        "effort": "high"
-      },
       response_format: {
         type: 'json_schema',
         json_schema: {
@@ -285,7 +286,8 @@ export async function suggestGardenPlanWithChatGPT(
 
   const parsed = await runPlannerCompletion(
     BASE_SYSTEM_PROMPT,
-    'Add trees/shrubs (set size small/medium/large when stated) plus any described ground or water subzones/surfaces from the transcript. ' +
+    'CRITICAL: Tree counts must match the transcript exactly per edge. Never add filler trees. If the count is unclear or no explicit number is given, prefer zero and set low confidence. ' +
+      'Add trees/shrubs (set size small/medium/large when stated) plus any described ground or water subzones/surfaces from the transcript. ' +
       'Whenever the transcript mentions a surface material (grass, soil, gravel, mulch, concrete, pathway, patio, field, water, etc.) for a specific area, you MUST emit a polygon entry in zones[] representing that area. ' +
       'Bodies of water must be represented as zones of type \"water\" with polygon points, NOT as point objects. ' +
       'Trees must include a size of small/medium/large when the transcript mentions it. ' +
